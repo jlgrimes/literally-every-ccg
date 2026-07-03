@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import PackWrapper from "../components/PackWrapper";
 import CardStack from "../components/CardStack";
+import Duel from "../components/Duel";
 
 const TIER_ORDER = ["common", "uncommon", "rare", "epic", "legendary"];
 const TIER_LABEL = { common: "Common", uncommon: "Uncommon", rare: "Rare", epic: "Epic", legendary: "Legendary" };
@@ -50,6 +51,9 @@ export default function Home() {
   const [arena, setArena] = useState(null);
   const [arenaRec, setArenaRec] = useState(EMPTY_RECORD);
 
+  // duel: null | { playerDeck, aiDeck }
+  const [duel, setDuel] = useState(null);
+
   const toastTimer = useRef(null);
   const loaded = useRef(false);
 
@@ -79,9 +83,9 @@ export default function Home() {
 
   // lock page scroll while the pack screen is open
   useEffect(() => {
-    document.body.style.overflow = screen || inspect || arena ? "hidden" : "";
+    document.body.style.overflow = screen || inspect || arena || duel ? "hidden" : "";
     return () => { document.body.style.overflow = ""; };
-  }, [screen, inspect, arena]);
+  }, [screen, inspect, arena, duel]);
 
   function toast(msg) {
     setToastMsg(msg);
@@ -162,28 +166,71 @@ export default function Home() {
 
   function closeScreen() { setScreen(null); }
 
-  // ---------- arena ----------
+  // ---------- arena & duel ----------
   // binder cards saved before battle stats existed lack bs — ask the server
-  // which of them can fight and heal the stored copies once
-  async function openArena() {
-    setArena({ phase: "pick", sel: [] });
+  // which of them can fight and heal the stored copies once. Returns the
+  // healed binder so callers don't have to wait for the state update.
+  async function healFighters() {
     const need = Object.entries(state.binder)
       .filter(([, c]) => BATTLE_GAMES.includes(c.game) && !c.bs)
       .map(([k]) => k);
-    if (!need.length) return;
+    if (!need.length) return state.binder;
     try {
       const r = await fetch("/api/battle", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ filter: need }),
       });
       const j = await r.json();
-      if (!j.ok || !j.ok.length) return;
+      if (!j.ok || !j.ok.length) return state.binder;
+      const healed = { ...state.binder };
+      for (const { key: k, bs } of j.ok) if (healed[k]) healed[k] = { ...healed[k], bs };
       setState((s) => {
         const binder = { ...s.binder };
         for (const { key: k, bs } of j.ok) if (binder[k]) binder[k] = { ...binder[k], bs };
         return { ...s, binder };
       });
-    } catch (e) {}
+      return healed;
+    } catch (e) { return state.binder; }
+  }
+
+  function openArena() {
+    setArena({ phase: "pick", sel: [] });
+    healFighters();
+  }
+
+  // full merged-rules duel: your best 20 fighters (loaners fill the gaps),
+  // AI drafts a deck mirroring your tier profile
+  async function openDuel() {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const binder = await healFighters();
+      const mine = Object.values(binder)
+        .filter((c) => Array.isArray(c.bs))
+        .sort((a, b) => rank(b.tier) - rank(a.tier) || b.bs[0] + b.bs[1] - (a.bs[0] + a.bs[1]))
+        .slice(0, 20);
+      const r = await fetch("/api/battle", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ draft: { tiers: mine.map((c) => c.tier), loan: 20 - mine.length } }),
+      });
+      const j = await r.json();
+      if (!j.deck || !j.deck.length) throw new Error("no deck");
+      setDuel({ playerDeck: [...mine, ...(j.loaners || [])], aiDeck: j.deck });
+    } catch (e) {
+      toast("The dueling grounds jammed — try again");
+    } finally { setBusy(false); }
+  }
+
+  function duelDone(result) {
+    if (result) {
+      setArenaRec((rec) => ({
+        w: rec.w + (result === "win" ? 1 : 0),
+        l: rec.l + (result === "loss" ? 1 : 0),
+        d: rec.d + (result === "draw" ? 1 : 0),
+      }));
+      if (result === "win") celebrate("epic");
+    }
+    setDuel(null);
   }
 
   function toggleFighter(k) {
@@ -265,7 +312,8 @@ export default function Home() {
             <button className="pull display" disabled={busy} onClick={buyPack}>
               {busy ? "SHUFFLING…" : "OPEN PACK"}
             </button>
-            <button className="pull10 display" disabled={busy} onClick={openArena}>⚔ BATTLE</button>
+            <button className="pull10 display" disabled={busy} onClick={openDuel}>⚔ DUEL</button>
+            <button className="pull10 display" disabled={busy} onClick={openArena}>🗡 SKIRMISH</button>
           </div>
           <div className="odds">
             Hit slot — <b className="ol">Legendary 8%</b> · <b className="oe">Epic 20%</b> · <b className="or">Rare 72%</b>
@@ -435,6 +483,9 @@ export default function Home() {
           )}
         </div>
       )}
+
+      {/* ---------- merged-rules duel ---------- */}
+      {duel && <Duel playerDeck={duel.playerDeck} aiDeck={duel.aiDeck} onDone={duelDone} />}
 
       {/* ---------- single-card inspect overlay ---------- */}
       {inspect && (

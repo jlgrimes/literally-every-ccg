@@ -13,8 +13,12 @@ with unified rarity tiers.
 ## Features
 
 - Swipe-to-tear pack opening with a tap-through card stack
-- Arena battles: pit Magic creatures, Pokémon and Yu-Gi-Oh! monsters against
-  each other — real P/T, HP/attack and ATK/DEF normalized onto one 1–100 scale
+- OMNIRULES duels — three rulesets merged into one game: Magic cards cost
+  mana and suffer summoning sickness, Pokémon attack only with energy
+  attached, and Yu-Gi-Oh monsters tribute-summon by sacrificing your board
+  (yes, you can sacrifice a Grizzly Bears to summon Blue-Eyes White Dragon)
+- Quick skirmishes: 3-lane stat fights with real P/T, HP/attack and ATK/DEF
+  normalized onto one 1–100 scale, against a tier-matched AI
 - Unified 6/3/1 booster structure (hit slot: Legendary 8% / Epic 20% / Rare 72%)
 - Interactive holographic card effects — tilt, glare, rainbow and gold foils
 - Persistent binder with counts, per-game and per-tier filters, and completion tracking
