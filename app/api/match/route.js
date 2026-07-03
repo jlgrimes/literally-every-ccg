@@ -1,7 +1,13 @@
-import { createMatch, getMatch, updateMatch } from "../../../lib/matchStore";
+import { createMatch, getMatch, updateMatch, persistent } from "../../../lib/matchStore";
 import { initDuel } from "../../../lib/duel";
 
 export const dynamic = "force-dynamic";
+
+// health check: `persistent` is true when Supabase env vars are wired up,
+// false means matches live in process memory (dev only — dies on serverless)
+export async function GET() {
+  return Response.json({ multiplayer: true, persistent });
+}
 
 const CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"; // no 0/O/1/I/L
 const newCode = () => Array.from({ length: 6 }, () => CODE_ALPHABET[Math.floor(Math.random() * CODE_ALPHABET.length)]).join("");
