@@ -469,3 +469,50 @@ footer a:hover{color:var(--text)}
   backdrop-filter:blur(8px);
   -webkit-backdrop-filter:blur(8px);
 }
+
+/* ---------- arena ---------- */
+.arenascreen{justify-content:flex-start;padding-top:40px;overflow-y:auto;gap:14px}
+.arena-sub{
+  z-index:2;color:var(--muted);font-size:12.5px;letter-spacing:.05em;line-height:1.6;
+  text-align:center;max-width:420px;
+}
+.arena-grid{
+  z-index:2;display:grid;grid-template-columns:repeat(auto-fill,minmax(72px,1fr));gap:8px;
+  width:100%;max-width:440px;max-height:44vh;overflow-y:auto;padding:4px;
+  border:1px solid var(--line);border-radius:12px;background:rgba(16,20,31,.6);
+}
+.thumb .bs-badge{
+  position:absolute;bottom:3px;left:3px;right:3px;background:rgba(7,9,16,.85);
+  border:1px solid var(--line);color:var(--text);font-size:9px;font-weight:700;
+  padding:1px 3px;border-radius:6px;pointer-events:none;text-align:center;letter-spacing:.02em;
+}
+.thumb.picked{outline:3px solid var(--gold);outline-offset:-1px;box-shadow:0 0 16px rgba(255,194,77,.55)}
+.pick-badge{
+  position:absolute;top:3px;right:3px;width:18px;height:18px;border-radius:50%;
+  background:var(--gold);color:#1a1206;font-size:11px;font-weight:800;
+  display:flex;align-items:center;justify-content:center;pointer-events:none;
+}
+.arena-actions{z-index:2;display:flex;gap:10px;align-items:center;flex-wrap:wrap;justify-content:center}
+.arena-win{color:var(--t-uncommon)} .arena-loss{color:#ff5d6c} .arena-draw{color:var(--muted)}
+.lanes{z-index:2;display:flex;flex-direction:column;gap:10px;width:100%;max-width:440px}
+.lane{
+  display:flex;align-items:center;gap:10px;padding:10px;border-radius:12px;
+  border:1px solid var(--line);background:var(--panel);
+}
+.lane-player{border-color:rgba(79,197,138,.55);box-shadow:0 0 14px rgba(79,197,138,.15)}
+.lane-ai{border-color:rgba(255,93,108,.45);box-shadow:0 0 14px rgba(255,93,108,.12)}
+.fighter{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;min-width:0}
+.fighter img{
+  width:82px;aspect-ratio:63/88;object-fit:cover;border-radius:6px;
+  border:1px solid var(--line);background:var(--panel-2);
+}
+.fighter .fname{
+  font-size:10.5px;font-weight:600;max-width:100%;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap;
+}
+.fighter .fmeta{font-size:10px;color:var(--muted);letter-spacing:.03em}
+.fighter .fmeta b{color:var(--text);font-weight:700}
+.lane .vs{font-size:18px;color:var(--gold);flex:0 0 auto}
+.lane-player .vs{color:var(--t-uncommon)}
+.lane-ai .vs{color:#ff5d6c}
+.lane-draw .vs{color:var(--muted)}

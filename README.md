@@ -13,6 +13,8 @@ with unified rarity tiers.
 ## Features
 
 - Swipe-to-tear pack opening with a tap-through card stack
+- Arena battles: pit Magic creatures, Pokémon and Yu-Gi-Oh! monsters against
+  each other — real P/T, HP/attack and ATK/DEF normalized onto one 1–100 scale
 - Unified 6/3/1 booster structure (hit slot: Legendary 8% / Epic 20% / Rare 72%)
 - Interactive holographic card effects — tilt, glare, rainbow and gold foils
 - Persistent binder with counts, per-game and per-tier filters, and completion tracking
@@ -24,7 +26,9 @@ Next.js on Vercel. The card database is built by `scripts/seed-full.mjs`,
 which ingests full catalogs from Scryfall bulk data, the official
 pokemon-tcg-data dump, YGOPRODeck, Lorcast, apitcg data repos, swu-db, and
 the-fab-cube — then normalizes every game's native rarities into five shared
-tiers. Pack odds are server-authoritative via `/api/pack`.
+tiers, and each battle game's combat stats onto a shared 1–100 ATK/HP scale.
+Pack odds and battle resolution are server-authoritative via `/api/pack`
+and `/api/battle`.
 
 ```bash
 npm install

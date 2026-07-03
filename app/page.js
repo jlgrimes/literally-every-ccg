@@ -19,6 +19,8 @@ const GAME_CHIP = {
 const rank = (t) => TIER_ORDER.indexOf(t);
 const key = (c) => `${c.game}:${c.id}`;
 const EMPTY = { pulls: 0, tiers: { common: 0, uncommon: 0, rare: 0, epic: 0, legendary: 0 }, binder: {} };
+const BATTLE_GAMES = ["mtg", "pokemon", "yugioh"];
+const EMPTY_RECORD = { w: 0, l: 0, d: 0 };
 
 function loadOk(src) {
   return new Promise((res) => {
@@ -44,6 +46,10 @@ export default function Home() {
   // fullscreen pack experience: null | { phase: "wrapper"|"stack"|"summary", cards, idx }
   const [screen, setScreen] = useState(null);
 
+  // arena: null | { phase: "pick", sel: [keys] } | { phase: "result", sel, data }
+  const [arena, setArena] = useState(null);
+  const [arenaRec, setArenaRec] = useState(EMPTY_RECORD);
+
   const toastTimer = useRef(null);
   const loaded = useRef(false);
 
@@ -55,6 +61,10 @@ export default function Home() {
         setState({ pulls: s.pulls || 0, tiers: s.tiers || EMPTY.tiers, binder: s.binder || {} });
       }
     } catch (e) {}
+    try {
+      const ar = localStorage.getItem("omnideck:arena");
+      if (ar) setArenaRec({ ...EMPTY_RECORD, ...JSON.parse(ar) });
+    } catch (e) {}
     loaded.current = true;
     fetch("/api/meta").then((r) => r.json()).then(setMeta).catch(() => {});
   }, []);
@@ -62,12 +72,16 @@ export default function Home() {
     if (!loaded.current) return;
     try { localStorage.setItem("omnideck:v2", JSON.stringify(state)); } catch (e) {}
   }, [state]);
+  useEffect(() => {
+    if (!loaded.current) return;
+    try { localStorage.setItem("omnideck:arena", JSON.stringify(arenaRec)); } catch (e) {}
+  }, [arenaRec]);
 
   // lock page scroll while the pack screen is open
   useEffect(() => {
-    document.body.style.overflow = screen || inspect ? "hidden" : "";
+    document.body.style.overflow = screen || inspect || arena ? "hidden" : "";
     return () => { document.body.style.overflow = ""; };
-  }, [screen, inspect]);
+  }, [screen, inspect, arena]);
 
   function toast(msg) {
     setToastMsg(msg);
@@ -148,6 +162,61 @@ export default function Home() {
 
   function closeScreen() { setScreen(null); }
 
+  // ---------- arena ----------
+  // binder cards saved before battle stats existed lack bs — ask the server
+  // which of them can fight and heal the stored copies once
+  async function openArena() {
+    setArena({ phase: "pick", sel: [] });
+    const need = Object.entries(state.binder)
+      .filter(([, c]) => BATTLE_GAMES.includes(c.game) && !c.bs)
+      .map(([k]) => k);
+    if (!need.length) return;
+    try {
+      const r = await fetch("/api/battle", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ filter: need }),
+      });
+      const j = await r.json();
+      if (!j.ok || !j.ok.length) return;
+      setState((s) => {
+        const binder = { ...s.binder };
+        for (const { key: k, bs } of j.ok) if (binder[k]) binder[k] = { ...binder[k], bs };
+        return { ...s, binder };
+      });
+    } catch (e) {}
+  }
+
+  function toggleFighter(k) {
+    setArena((a) => {
+      if (!a || a.phase !== "pick") return a;
+      const sel = a.sel.includes(k) ? a.sel.filter((x) => x !== k)
+        : a.sel.length < 3 ? [...a.sel, k] : a.sel;
+      return { ...a, sel };
+    });
+  }
+
+  async function fight() {
+    if (!arena || arena.sel.length !== 3 || busy) return;
+    setBusy(true);
+    try {
+      const r = await fetch("/api/battle", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ team: arena.sel }),
+      });
+      const j = await r.json();
+      if (j.error) throw new Error(j.error);
+      setArenaRec((rec) => ({
+        w: rec.w + (j.result === "win" ? 1 : 0),
+        l: rec.l + (j.result === "loss" ? 1 : 0),
+        d: rec.d + (j.result === "draw" ? 1 : 0),
+      }));
+      if (j.result === "win") celebrate("epic");
+      setArena({ phase: "result", sel: arena.sel, data: j });
+    } catch (e) {
+      toast("The arena gates jammed — try again");
+    } finally { setBusy(false); }
+  }
+
   function showFromBinder(c) { setInspect(c); }
 
   function clearAll() {
@@ -156,6 +225,10 @@ export default function Home() {
   }
 
   const games = meta ? Object.keys(meta.byGame) : [];
+  const fighterPool = Object.values(state.binder)
+    .filter((c) => Array.isArray(c.bs))
+    .sort((a, b) => rank(b.tier) - rank(a.tier) || b.bs[0] + b.bs[1] - (a.bs[0] + a.bs[1]))
+    .slice(0, 200);
   const binderCards = Object.values(state.binder)
     .filter((c) => (fGame === "all" || c.game === fGame) && (fTier === "all" || c.tier === fTier))
     .sort((a, b) => rank(b.tier) - rank(a.tier) || a.name.localeCompare(b.name));
@@ -188,12 +261,18 @@ export default function Home() {
         </div>
 
         <div className="pullrow">
-          <button className="pull display" disabled={busy} onClick={buyPack}>
-            {busy ? "SHUFFLING…" : "OPEN PACK"}
-          </button>
+          <div className="btns">
+            <button className="pull display" disabled={busy} onClick={buyPack}>
+              {busy ? "SHUFFLING…" : "OPEN PACK"}
+            </button>
+            <button className="pull10 display" disabled={busy} onClick={openArena}>⚔ BATTLE</button>
+          </div>
           <div className="odds">
             Hit slot — <b className="ol">Legendary 8%</b> · <b className="oe">Epic 20%</b> · <b className="or">Rare 72%</b>
           </div>
+          {(arenaRec.w + arenaRec.l + arenaRec.d) > 0 && (
+            <div className="odds">Arena record — <b className="oe">{arenaRec.w}W</b> · {arenaRec.l}L · {arenaRec.d}D</div>
+          )}
         </div>
 
         <div className="stats">
@@ -279,6 +358,79 @@ export default function Home() {
               </div>
               {best && <div className="banner"><span className="meta">Best pull: {best.name} ({TIER_LABEL[best.tier]})</span></div>}
               <div className="ps-continue">tap anywhere to continue</div>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* ---------- arena ---------- */}
+      {arena && (
+        <div className="packscreen arenascreen">
+          <div className="ps-portal" />
+
+          {arena.phase === "pick" && (
+            <>
+              <div className="ps-title display">Choose your fighters</div>
+              <div className="arena-sub">
+                {fighterPool.length
+                  ? <>Pick 3 — Magic creatures, Pokémon &amp; Yu-Gi-Oh! monsters battle with their real stats, normalized to one scale.</>
+                  : <>No fighters in your binder yet. Rip packs for Magic, Pokémon or Yu-Gi-Oh! cards — creatures and monsters can battle.</>}
+              </div>
+              {fighterPool.length > 0 && (
+                <div className="arena-grid">
+                  {fighterPool.map((c) => {
+                    const k = key(c);
+                    const n = arena.sel.indexOf(k);
+                    return (
+                      <button key={k} className={`thumb t-${c.tier}${n !== -1 ? " picked" : ""}`}
+                        title={`${c.name} · ${c.bs[0]} ATK / ${c.bs[1]} HP`} onClick={() => toggleFighter(k)}>
+                        <img src={c.img} alt={c.name} loading="lazy" referrerPolicy="no-referrer" />
+                        <span className="bs-badge">{c.bs[0]}⚔ {c.bs[1]}♥</span>
+                        {n !== -1 && <span className="pick-badge">{n + 1}</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+              <div className="arena-actions">
+                <button className="pull display" disabled={arena.sel.length !== 3 || busy} onClick={fight}>
+                  {busy ? "FIGHTING…" : `FIGHT ${arena.sel.length}/3`}
+                </button>
+                <button className="pull10 display" onClick={() => setArena(null)}>BACK</button>
+              </div>
+            </>
+          )}
+
+          {arena.phase === "result" && (
+            <>
+              <div className={`ps-title display arena-${arena.data.result}`}>
+                {arena.data.result === "win" ? "VICTORY" : arena.data.result === "loss" ? "DEFEAT" : "DRAW"}
+              </div>
+              <div className="arena-sub">
+                Lanes {arena.data.playerWins} – {arena.data.aiWins} · record {arenaRec.w}W · {arenaRec.l}L · {arenaRec.d}D
+              </div>
+              <div className="lanes">
+                {arena.data.lanes.map((l, i) => (
+                  <div key={i} className={`lane lane-${l.winner}`}>
+                    <div className="fighter">
+                      <img src={l.player.img} alt={l.player.name} referrerPolicy="no-referrer" />
+                      <span className="fname">{l.player.name}</span>
+                      <span className="fmeta"><b>{l.player.bs[0]}⚔ {l.player.bs[1]}♥</b> · KOs in {l.playerHits}</span>
+                    </div>
+                    <span className="vs display">{l.winner === "player" ? "◀" : l.winner === "ai" ? "▶" : "="}</span>
+                    <div className="fighter foe">
+                      <img src={l.ai.img} alt={l.ai.name} referrerPolicy="no-referrer" />
+                      <span className="fname">{l.ai.name}</span>
+                      <span className="fmeta"><b>{l.ai.bs[0]}⚔ {l.ai.bs[1]}♥</b> · KOs in {l.aiHits}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="arena-actions">
+                <button className="pull display" disabled={busy} onClick={fight}>REMATCH</button>
+                <button className="pull10 display" onClick={() => setArena({ phase: "pick", sel: arena.sel })}>NEW TEAM</button>
+                <button className="pull10 display" onClick={() => setArena(null)}>DONE</button>
+              </div>
             </>
           )}
         </div>

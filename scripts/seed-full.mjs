@@ -118,6 +118,27 @@ function mapRarity(game, raw) {
   return "common";
 }
 
+// battle stats: normalize each game's native combat numbers onto one shared
+// 1-100 ATK/HP scale (bs: [atk, hp]). Only MTG creatures with numeric P/T,
+// Pokémon with a damaging attack, and Yu-Gi-Oh monsters get stats — cards
+// without bs sit out of the arena.
+const clampStat = v => Math.max(1, Math.min(100, Math.round(v)));
+function mapStats(game, s) {
+  if (game === "mtg") {
+    if (!Number.isFinite(s.pow) || !Number.isFinite(s.tou)) return null;
+    return [clampStat(s.pow * 11), clampStat(s.tou * 11)];
+  }
+  if (game === "pokemon") {
+    if (!(s.hp > 0) || !(s.dmg > 0)) return null;
+    return [clampStat(s.dmg / 2.4), clampStat(s.hp / 3.4)];
+  }
+  if (game === "yugioh") {
+    if (!(s.atk >= 0) || !(s.def >= 0)) return null;
+    return [clampStat(s.atk / 45), clampStat(s.def / 45)];
+  }
+  return null;
+}
+
 const out = [];
 const seen = new Set();
 function add(c) {
@@ -142,7 +163,10 @@ async function seedMTG() {
     if (c.set_type === "memorabilia" || c.set_type === "token") continue;
     const iu = c.image_uris || (c.card_faces && c.card_faces[0].image_uris);
     if (!iu || !iu.normal) continue;
-    add({ id: c.oracle_id || c.id, name: c.name, game: "mtg", img: iu.normal, native: c.rarity, tier: mapRarity("mtg", c.rarity), set: c.set_name });
+    const face = (c.card_faces && c.card_faces[0]) || c;
+    const num = v => (/^\d+$/.test(v || "") ? +v : NaN);
+    const bs = mapStats("mtg", { pow: num(c.power ?? face.power), tou: num(c.toughness ?? face.toughness) });
+    add({ id: c.oracle_id || c.id, name: c.name, game: "mtg", img: iu.normal, native: c.rarity, tier: mapRarity("mtg", c.rarity), set: c.set_name, ...(bs && { bs }) });
   }
   console.log("MTG done:", count("mtg"));
 }
@@ -161,7 +185,10 @@ async function seedPokemon() {
     const cards = JSON.parse(readFileSync(`${dir}/${f}`, "utf8"));
     for (const c of cards) {
       if (!c.images || !c.images.large) continue;
-      add({ id: c.id, name: c.name, game: "pokemon", img: c.images.large, native: c.rarity || "Common", tier: mapRarity("pokemon", c.rarity), set: setName[setId] || setId });
+      let dmg = 0;
+      for (const a of c.attacks || []) { const d = parseInt(a.damage, 10); if (d > dmg) dmg = d; }
+      const bs = c.supertype === "Pokémon" ? mapStats("pokemon", { hp: parseInt(c.hp, 10), dmg }) : null;
+      add({ id: c.id, name: c.name, game: "pokemon", img: c.images.large, native: c.rarity || "Common", tier: mapRarity("pokemon", c.rarity), set: setName[setId] || setId, ...(bs && { bs }) });
     }
   }
   console.log("Pokémon done:", count("pokemon"));
@@ -180,7 +207,10 @@ async function seedYGO() {
       if (!img) continue;
       const printing = c.card_sets && c.card_sets.length ? c.card_sets[Math.floor(Math.random() * c.card_sets.length)] : null;
       const native = printing ? printing.set_rarity : "Common";
-      add({ id: String(c.id), name: c.name, game: "yugioh", img, native, tier: mapRarity("yugioh", native), set: printing ? printing.set_name : "—" });
+      // link monsters have no DEF — treat as 0 so they fight as glass cannons
+      const def = typeof c.def === "number" ? c.def : (typeof c.linkval === "number" ? 0 : NaN);
+      const bs = /monster/i.test(c.type || "") ? mapStats("yugioh", { atk: c.atk, def }) : null;
+      add({ id: String(c.id), name: c.name, game: "yugioh", img, native, tier: mapRarity("yugioh", native), set: printing ? printing.set_name : "—", ...(bs && { bs }) });
     }
     offset += batch.length;
     console.log(`Yu-Gi-Oh: ${offset}`);
