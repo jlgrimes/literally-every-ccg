@@ -2,7 +2,7 @@
 import { useRef, useState, useReducer } from "react";
 import {
   initDuel, playCard, attachEnergy, attack, endTurn, canPlay, canAttach,
-  canAttackWith, costOf, energyNeed, tributeNeed,
+  canAttackWith, costOf, energyNeed, tributeNeed, isEvolution, evoTargets,
 } from "../lib/duel";
 
 const COST_GLYPH = { mana: "💧", energy: "⚡", tribute: "⭐" };
@@ -13,7 +13,8 @@ export default function Duel({ playerDeck, aiDeck, onDone }) {
   if (!stRef.current) stRef.current = initDuel(playerDeck, aiDeck);
   const [, force] = useReducer((x) => x + 1, 0);
   const [sel, setSel] = useState(null);          // own board index picked to attack
-  const [pending, setPending] = useState(null);  // { hand, need, picked:[] } tribute mode
+  // pending: { hand, need, picked:[] } tribute mode | { hand, evolve:true } evolution targeting
+  const [pending, setPending] = useState(null);
   const [hint, setHint] = useState("Play cards, then attack. Mana fuels Magic, energy powers Pokémon, tributes summon big Yu-Gi-Oh monsters.");
   const reported = useRef(false);
 
@@ -34,9 +35,16 @@ export default function Duel({ playerDeck, aiDeck, onDone }) {
     if (pending) { setPending(null); return; }
     if (!canPlay(st, "p", i)) {
       const { kind, n } = costOf(c);
-      if (mine.board.length >= 5) setHint("Board is full.");
+      if (isEvolution(c)) setHint(`🧬 ${c.name} evolves from ${c.evo} — you need one on your board first.`);
+      else if (mine.board.length >= 5) setHint("Board is full.");
       else if (kind === "mana") setHint(`${c.name} needs ${n}💧 — you have ${mine.mana}.`);
       else if (kind === "tribute") setHint(mine.summonUsed ? "Already normal-summoned this turn." : `${c.name} needs ${n}⭐ tribute${n > 1 ? "s" : ""} — not enough creatures.`);
+      return;
+    }
+    if (isEvolution(c)) {
+      const targets = evoTargets(st, "p", c);
+      if (targets.length === 1) { playCard(st, "p", i, [], targets[0]); setHint(""); refresh(); }
+      else { setPending({ hand: i, evolve: true }); setHint(`Evolve which ${c.evo}? Tap it.`); }
       return;
     }
     const need = c.game === "yugioh" ? tributeNeed(c) : 0;
@@ -53,6 +61,12 @@ export default function Duel({ playerDeck, aiDeck, onDone }) {
   function clickMine(x) {
     if (st.over) return;
     if (pending) {
+      if (pending.evolve) {
+        const c = mine.hand[pending.hand];
+        if (c && evoTargets(st, "p", c).includes(x)) { playCard(st, "p", pending.hand, [], x); setPending(null); setHint(""); }
+        refresh();
+        return;
+      }
       const picked = pending.picked.includes(x) ? pending.picked.filter((v) => v !== x) : [...pending.picked, x];
       if (picked.length >= pending.need) {
         playCard(st, "p", pending.hand, picked);
@@ -134,12 +148,13 @@ export default function Duel({ playerDeck, aiDeck, onDone }) {
       <div className="duel-hand">
         {mine.hand.map((c, i) => {
           const { kind, n } = costOf(c);
-          const ok = canPlay(st, "p", i) && (c.game !== "yugioh" || tributeNeed(c) <= mine.board.length);
+          const ok = canPlay(st, "p", i);
           return (
             <button key={`${c.game}:${c.id}:${i}`} className={`dcard hand t-${c.tier}${ok ? "" : " nope"}${pending && pending.hand === i ? " sel" : ""}`}
-              onClick={() => clickHand(i)} title={`${c.name} · ${GAME_TAG[c.game]}`}>
+              onClick={() => clickHand(i)} title={`${c.name} · ${GAME_TAG[c.game]}${isEvolution(c) ? ` · evolves from ${c.evo}` : ""}`}>
               <img src={c.img} alt={c.name} referrerPolicy="no-referrer" />
               <span className="dcost">{COST_GLYPH[kind]}{n}</span>
+              {isEvolution(c) && <span className="dtag">🧬</span>}
               <span className="dstat datk">{c.bs[0]}⚔</span>
               <span className="dstat dhpv">{c.bs[1]}♥</span>
             </button>

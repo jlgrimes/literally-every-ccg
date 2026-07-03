@@ -577,3 +577,24 @@ footer a:hover{color:var(--text)}
   align-items:center;justify-content:center;background:rgba(5,6,12,.82);
   backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);cursor:pointer;animation:psin .3s ease;
 }
+
+/* ---------- deck builder ---------- */
+.deck-strip{
+  z-index:2;display:flex;gap:5px;align-items:center;width:100%;max-width:460px;
+  min-height:72px;overflow-x:auto;padding:6px 8px;border-radius:12px;
+  border:1px dashed var(--line);background:rgba(16,20,31,.6);scrollbar-width:none;
+}
+.deck-strip::-webkit-scrollbar{display:none}
+.deck-strip.full{border-color:var(--t-uncommon);border-style:solid}
+.deck-strip .dcard{width:40px}
+.deck-count{
+  flex:0 0 auto;font-size:13px;font-weight:800;letter-spacing:.08em;color:var(--gold);
+  padding-right:6px;border-right:1px solid var(--line);margin-right:2px;
+}
+.deck-strip.full .deck-count{color:var(--t-uncommon)}
+.builder-grid{max-height:38vh}
+.evo-badge{
+  position:absolute;top:3px;left:3px;font-size:10px;pointer-events:none;
+  background:rgba(7,9,16,.85);border:1px solid var(--line);border-radius:5px;padding:0 3px;
+}
+.thumb.maxed{outline-color:var(--t-uncommon)}

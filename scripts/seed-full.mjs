@@ -166,7 +166,8 @@ async function seedMTG() {
     const face = (c.card_faces && c.card_faces[0]) || c;
     const num = v => (/^\d+$/.test(v || "") ? +v : NaN);
     const bs = mapStats("mtg", { pow: num(c.power ?? face.power), tou: num(c.toughness ?? face.toughness) });
-    add({ id: c.oracle_id || c.id, name: c.name, game: "mtg", img: iu.normal, native: c.rarity, tier: mapRarity("mtg", c.rarity), set: c.set_name, ...(bs && { bs }) });
+    // mc: real converted mana cost, used by the duel instead of derived cost
+    add({ id: c.oracle_id || c.id, name: c.name, game: "mtg", img: iu.normal, native: c.rarity, tier: mapRarity("mtg", c.rarity), set: c.set_name, ...(bs && { bs, mc: Math.round(c.cmc || 0) }) });
   }
   console.log("MTG done:", count("mtg"));
 }
@@ -188,7 +189,8 @@ async function seedPokemon() {
       let dmg = 0;
       for (const a of c.attacks || []) { const d = parseInt(a.damage, 10); if (d > dmg) dmg = d; }
       const bs = c.supertype === "Pokémon" ? mapStats("pokemon", { hp: parseInt(c.hp, 10), dmg }) : null;
-      add({ id: c.id, name: c.name, game: "pokemon", img: c.images.large, native: c.rarity || "Common", tier: mapRarity("pokemon", c.rarity), set: setName[setId] || setId, ...(bs && { bs }) });
+      // evo: name of the pre-evolution — the duel only lets these be played on top of it
+      add({ id: c.id, name: c.name, game: "pokemon", img: c.images.large, native: c.rarity || "Common", tier: mapRarity("pokemon", c.rarity), set: setName[setId] || setId, ...(bs && { bs }), ...(bs && c.evolvesFrom && { evo: c.evolvesFrom }) });
     }
   }
   console.log("Pokémon done:", count("pokemon"));

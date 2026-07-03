@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import PackWrapper from "../components/PackWrapper";
 import CardStack from "../components/CardStack";
 import Duel from "../components/Duel";
+import DeckBuilder from "../components/DeckBuilder";
 
 const TIER_ORDER = ["common", "uncommon", "rare", "epic", "legendary"];
 const TIER_LABEL = { common: "Common", uncommon: "Uncommon", rare: "Rare", epic: "Epic", legendary: "Legendary" };
@@ -53,6 +54,9 @@ export default function Home() {
 
   // duel: null | { playerDeck, aiDeck }
   const [duel, setDuel] = useState(null);
+  const [deckKeys, setDeckKeys] = useState(null); // saved 20-card deck (binder keys)
+  const [builder, setBuilder] = useState(false);
+  const duelAfterSave = useRef(false);
 
   const toastTimer = useRef(null);
   const loaded = useRef(false);
@@ -69,6 +73,10 @@ export default function Home() {
       const ar = localStorage.getItem("omnideck:arena");
       if (ar) setArenaRec({ ...EMPTY_RECORD, ...JSON.parse(ar) });
     } catch (e) {}
+    try {
+      const dk = JSON.parse(localStorage.getItem("omnideck:deck") || "null");
+      if (Array.isArray(dk)) setDeckKeys(dk);
+    } catch (e) {}
     loaded.current = true;
     fetch("/api/meta").then((r) => r.json()).then(setMeta).catch(() => {});
   }, []);
@@ -80,12 +88,16 @@ export default function Home() {
     if (!loaded.current) return;
     try { localStorage.setItem("omnideck:arena", JSON.stringify(arenaRec)); } catch (e) {}
   }, [arenaRec]);
+  useEffect(() => {
+    if (!loaded.current || !deckKeys) return;
+    try { localStorage.setItem("omnideck:deck", JSON.stringify(deckKeys)); } catch (e) {}
+  }, [deckKeys]);
 
   // lock page scroll while the pack screen is open
   useEffect(() => {
-    document.body.style.overflow = screen || inspect || arena || duel ? "hidden" : "";
+    document.body.style.overflow = screen || inspect || arena || duel || builder ? "hidden" : "";
     return () => { document.body.style.overflow = ""; };
-  }, [screen, inspect, arena, duel]);
+  }, [screen, inspect, arena, duel, builder]);
 
   function toast(msg) {
     setToastMsg(msg);
@@ -198,27 +210,60 @@ export default function Home() {
     healFighters();
   }
 
-  // full merged-rules duel: your best 20 fighters (loaners fill the gaps),
-  // AI drafts a deck mirroring your tier profile
+  // duels require a deck YOU built from cards you actually pulled:
+  // 20 cards, duplicates allowed up to the copies you own
+  function validDeck(keys, binder) {
+    if (!Array.isArray(keys) || keys.length !== 20) return false;
+    const used = {};
+    for (const k of keys) {
+      const c = binder[k];
+      if (!c || !Array.isArray(c.bs)) return false;
+      used[k] = (used[k] || 0) + 1;
+      if (used[k] > (c.count || 1)) return false;
+    }
+    return true;
+  }
+
+  async function startDuel(keys, binder) {
+    try {
+      const deckCards = keys.map((k) => binder[k]);
+      const r = await fetch("/api/battle", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ draft: { tiers: deckCards.map((c) => c.tier) } }),
+      });
+      const j = await r.json();
+      if (!j.deck || !j.deck.length) throw new Error("no deck");
+      setDuel({ playerDeck: deckCards, aiDeck: j.deck });
+    } catch (e) {
+      toast("The dueling grounds jammed — try again");
+    }
+  }
+
   async function openDuel() {
     if (busy) return;
     setBusy(true);
     try {
       const binder = await healFighters();
-      const mine = Object.values(binder)
-        .filter((c) => Array.isArray(c.bs))
-        .sort((a, b) => rank(b.tier) - rank(a.tier) || b.bs[0] + b.bs[1] - (a.bs[0] + a.bs[1]))
-        .slice(0, 20);
-      const r = await fetch("/api/battle", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ draft: { tiers: mine.map((c) => c.tier), loan: 20 - mine.length } }),
-      });
-      const j = await r.json();
-      if (!j.deck || !j.deck.length) throw new Error("no deck");
-      setDuel({ playerDeck: [...mine, ...(j.loaners || [])], aiDeck: j.deck });
-    } catch (e) {
-      toast("The dueling grounds jammed — try again");
+      if (validDeck(deckKeys, binder)) { await startDuel(deckKeys, binder); return; }
+      const owned = Object.values(binder).filter((c) => Array.isArray(c.bs)).reduce((n, c) => n + (c.count || 1), 0);
+      if (owned < 20) toast(`You need 20 fighters for a deck — you own ${owned}. Rip more packs!`);
+      else { duelAfterSave.current = true; setBuilder(true); }
     } finally { setBusy(false); }
+  }
+
+  async function openBuilder() {
+    duelAfterSave.current = false;
+    await healFighters();
+    setBuilder(true);
+  }
+
+  function saveDeck(keys) {
+    setDeckKeys(keys);
+    setBuilder(false);
+    if (duelAfterSave.current) {
+      duelAfterSave.current = false;
+      startDuel(keys, state.binder);
+    } else toast("Deck saved");
   }
 
   function duelDone(result) {
@@ -272,8 +317,9 @@ export default function Home() {
   }
 
   const games = meta ? Object.keys(meta.byGame) : [];
-  const fighterPool = Object.values(state.binder)
-    .filter((c) => Array.isArray(c.bs))
+  const eligibleBinder = Object.values(state.binder).filter((c) => Array.isArray(c.bs));
+  const fighterPool = eligibleBinder
+    .slice()
     .sort((a, b) => rank(b.tier) - rank(a.tier) || b.bs[0] + b.bs[1] - (a.bs[0] + a.bs[1]))
     .slice(0, 200);
   const binderCards = Object.values(state.binder)
@@ -313,6 +359,7 @@ export default function Home() {
               {busy ? "SHUFFLING…" : "OPEN PACK"}
             </button>
             <button className="pull10 display" disabled={busy} onClick={openDuel}>⚔ DUEL</button>
+            <button className="pull10 display" disabled={busy} onClick={openBuilder}>🃏 DECK</button>
             <button className="pull10 display" disabled={busy} onClick={openArena}>🗡 SKIRMISH</button>
           </div>
           <div className="odds">
@@ -482,6 +529,12 @@ export default function Home() {
             </>
           )}
         </div>
+      )}
+
+      {/* ---------- deck builder ---------- */}
+      {builder && !duel && (
+        <DeckBuilder pool={eligibleBinder} initial={deckKeys} onSave={saveDeck}
+          onClose={() => { duelAfterSave.current = false; setBuilder(false); }} />
       )}
 
       {/* ---------- merged-rules duel ---------- */}

@@ -14,9 +14,12 @@ with unified rarity tiers.
 
 - Swipe-to-tear pack opening with a tap-through card stack
 - OMNIRULES duels — three rulesets merged into one game: Magic cards cost
-  mana and suffer summoning sickness, Pokémon attack only with energy
-  attached, and Yu-Gi-Oh monsters tribute-summon by sacrificing your board
-  (yes, you can sacrifice a Grizzly Bears to summon Blue-Eyes White Dragon)
+  their real printed mana and suffer summoning sickness, Pokémon attack only
+  with energy attached and evolve on top of their pre-evolutions, and
+  Yu-Gi-Oh monsters tribute-summon by sacrificing your board (yes, you can
+  sacrifice a Grizzly Bears to summon Blue-Eyes White Dragon)
+- Deck building, required: construct your 20-card duel deck from cards you
+  actually pulled — duplicates allowed up to the copies you own
 - Quick skirmishes: 3-lane stat fights with real P/T, HP/attack and ATK/DEF
   normalized onto one 1–100 scale, against a tier-matched AI
 - Unified 6/3/1 booster structure (hit slot: Legendary 8% / Epic 20% / Rare 72%)
