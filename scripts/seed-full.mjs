@@ -101,6 +101,13 @@ function mapRarity(game, raw) {
     if (r === "s" || r === "r") return "rare";
     return "common";
   }
+  if (game === "riftbound") {
+    if (/overnumbered|showcase/.test(r)) return "legendary";
+    if (/alternate|epic/.test(r)) return "epic";
+    if (/^rare/.test(r)) return "rare";
+    if (/uncommon/.test(r)) return "uncommon";
+    return "common";
+  }
   if (game === "lorcana") {
     if (/enchanted|legendary/.test(r)) return "legendary";
     if (/super/.test(r)) return "epic";
@@ -221,6 +228,28 @@ async function seedApitcgRepo(repo, game) {
   console.log(game + " done:", count(game));
 }
 
+// ---------- RIFTBOUND (League of Legends TCG): apitcg dump ----------
+// Not routed through seedApitcgRepo: the dump includes sealed products (rarity
+// null), and neither c.code nor c.id is unique — alt treatments share collector
+// numbers — so the TCGplayer product id is the only stable per-card key.
+async function seedRiftbound() {
+  console.log("riftbound: downloading apitcg dump…");
+  execSync(`curl -sL https://github.com/apitcg/riftbound-tcg-data/archive/refs/heads/main.tar.gz -o /tmp/riftbound.tgz && rm -rf /tmp/riftbound && mkdir -p /tmp/riftbound && tar xzf /tmp/riftbound.tgz -C /tmp/riftbound --strip-components=1`);
+  const dir = "/tmp/riftbound/cards/en";
+  for (const f of readdirSync(dir)) {
+    let cards;
+    try { cards = JSON.parse(readFileSync(`${dir}/${f}`, "utf8")); } catch (e) { continue; }
+    if (!Array.isArray(cards)) continue;
+    for (const c of cards) {
+      if (!c.rarity || /token/i.test(c.cardType || "")) continue;
+      const img = c.images && (c.images.large || c.images.small);
+      if (!img) continue;
+      add({ id: String((c.tcgplayer && c.tcgplayer.id) || c.id), name: c.name, game: "riftbound", img, native: c.rarity, tier: mapRarity("riftbound", c.rarity), set: (c.set && c.set.name) || f.replace(".json", "") });
+    }
+  }
+  console.log("riftbound done:", count("riftbound"));
+}
+
 // ---------- DIGIMON: digimoncard.io (has rarity) ----------
 async function seedDigimon() {
   console.log("digimon: fetching full catalog…");
@@ -297,7 +326,8 @@ for (const [name, fn] of [["mtg", seedMTG], ["pokemon", seedPokemon], ["ygo", se
   ["dbfusion", () => seedApitcgRepo("dragon-ball-fusion-tcg-data", "dbfusion")],
   ["unionarena", () => seedApitcgRepo("union-arena-tcg-data", "unionarena")],
   ["swu", seedSWU],
-  ["fab", seedFAB]]) {
+  ["fab", seedFAB],
+  ["riftbound", seedRiftbound]]) {
   try { await fn(); } catch (e) { console.log("seeder", name, "FAILED:", e.message); }
   if (globalThis.gc) globalThis.gc();
 }

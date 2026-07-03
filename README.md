@@ -4,10 +4,11 @@ Every paper card game. One chaotic pack at a time.
 
 **Live:** https://omnideck-zeta.vercel.app
 
-Rip Pokémon-Pocket-style booster packs drawn from **87,000+ real cards** across
-10 paper TCGs — Magic: The Gathering, Pokémon, Yu-Gi-Oh!, Disney Lorcana,
+Rip Pokémon-Pocket-style booster packs drawn from **88,000+ real cards** across
+11 paper TCGs — Magic: The Gathering, Pokémon, Yu-Gi-Oh!, Disney Lorcana,
 One Piece, Gundam, Dragon Ball Fusion World, Union Arena, Star Wars Unlimited,
-and Flesh and Blood — all mixed into one pool with unified rarity tiers.
+Flesh and Blood, and Riftbound: League of Legends — all mixed into one pool
+with unified rarity tiers.
 
 ## Features
 
@@ -42,5 +43,5 @@ This project is licensed under **GPL-3.0** (see `LICENSE`).
 
 All card images and names are the property of their respective publishers
 (Wizards of the Coast, The Pokémon Company, Konami, Ravensburger/Disney,
-Bandai, FFG/Asmodee, Legend Story Studios). This is a non-commercial fan
+Bandai, FFG/Asmodee, Legend Story Studios, Riot Games). This is a non-commercial fan
 project; images are hotlinked from public databases.
