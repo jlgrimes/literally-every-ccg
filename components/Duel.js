@@ -1,39 +1,67 @@
 "use client";
-import { useRef, useState, useReducer } from "react";
+import { useEffect, useRef, useState, useReducer } from "react";
 import {
-  initDuel, playCard, attachEnergy, attack, endTurn, canPlay, canAttach,
-  canAttackWith, costOf, energyNeed, tributeNeed, isEvolution, evoTargets,
+  initDuel, playCard, attachEnergy, attack, endTurn, passTurn, concede,
+  canPlay, canAttach, canAttackWith, costOf, energyNeed, tributeNeed,
+  isEvolution, evoTargets,
 } from "../lib/duel";
 
 const COST_GLYPH = { mana: "💧", energy: "⚡", tribute: "⭐" };
 const GAME_TAG = { mtg: "MTG", pokemon: "PKM", yugioh: "YGO" };
 
-export default function Duel({ playerDeck, aiDeck, onDone }) {
+// mode "ai": decks in, engine runs the opponent.
+// mode "pvp": mySide "p"|"ai"; `external` {seq, state} applies the opponent's
+// writes; every local action calls onSync(state) so they see yours.
+export default function Duel({
+  mode = "ai", mySide = "p", playerDeck, aiDeck, initialState = null,
+  external = null, onSync = null, names = null, onDone,
+}) {
+  const my = mySide, their = my === "p" ? "ai" : "p";
   const stRef = useRef(null);
-  if (!stRef.current) stRef.current = initDuel(playerDeck, aiDeck);
+  if (!stRef.current) stRef.current = initialState || initDuel(playerDeck, aiDeck);
   const [, force] = useReducer((x) => x + 1, 0);
+  const appliedSeq = useRef(external ? external.seq : 0);
   const [sel, setSel] = useState(null);          // own board index picked to attack
   // pending: { hand, need, picked:[] } tribute mode | { hand, evolve:true } evolution targeting
   const [pending, setPending] = useState(null);
   const [hint, setHint] = useState("Play cards, then attack. Mana fuels Magic, energy powers Pokémon, tributes summon big Yu-Gi-Oh monsters.");
   const reported = useRef(false);
 
+  // opponent moved — adopt their state. Never clobber our own in-progress
+  // turn, except a game-ending state (their concede) which always lands.
+  useEffect(() => {
+    if (!external || !external.state || external.seq <= appliedSeq.current) return;
+    if (!external.state.over && !stRef.current.over && stRef.current.active === my && external.state.active === my) return;
+    appliedSeq.current = external.seq;
+    stRef.current = external.state;
+    setSel(null); setPending(null);
+    force();
+  }, [external, my]);
+
   const st = stRef.current;
-  const mine = st.p, foe = st.ai;
+  const mine = st[my], foe = st[their];
+  const myTurn = !st.over && st.active === my;
+  const meLabel = (names && names.me) || "You";
+  const themLabel = (names && names.them) || (mode === "ai" ? "AI" : "Them");
 
   function refresh() { force(); }
+  function sync() { if (onSync) onSync(st); }
+
   function done() {
-    if (st.over && !reported.current) { reported.current = true; onDone(st.winner === "p" ? "win" : st.winner === "ai" ? "loss" : "draw"); }
-    else onDone(null);
+    if (mode === "pvp" && !st.over) { concede(st, my); sync(); }
+    if (st.over && !reported.current) {
+      reported.current = true;
+      onDone(st.winner === my ? "win" : st.winner === their ? "loss" : "draw");
+    } else onDone(null);
   }
 
   function clickHand(i) {
-    if (st.over) return;
+    if (!myTurn) return;
     setSel(null);
     const c = mine.hand[i];
     if (!c) return;
     if (pending) { setPending(null); return; }
-    if (!canPlay(st, "p", i)) {
+    if (!canPlay(st, my, i)) {
       const { kind, n } = costOf(c);
       if (isEvolution(c)) setHint(`🧬 ${c.name} evolves from ${c.evo} — you need one on your board first.`);
       else if (mine.board.length >= 5) setHint("Board is full.");
@@ -42,8 +70,8 @@ export default function Duel({ playerDeck, aiDeck, onDone }) {
       return;
     }
     if (isEvolution(c)) {
-      const targets = evoTargets(st, "p", c);
-      if (targets.length === 1) { playCard(st, "p", i, [], targets[0]); setHint(""); refresh(); }
+      const targets = evoTargets(st, my, c);
+      if (targets.length === 1) { playCard(st, my, i, [], targets[0]); setHint(""); sync(); refresh(); }
       else { setPending({ hand: i, evolve: true }); setHint(`Evolve which ${c.evo}? Tap it.`); }
       return;
     }
@@ -53,30 +81,32 @@ export default function Duel({ playerDeck, aiDeck, onDone }) {
       setHint(`Tribute summon: sacrifice ${need} of your creature${need > 1 ? "s" : ""} — tap them.`);
       return;
     }
-    playCard(st, "p", i);
+    playCard(st, my, i);
     setHint("");
+    sync();
     refresh();
   }
 
   function clickMine(x) {
-    if (st.over) return;
+    if (!myTurn) return;
     if (pending) {
       if (pending.evolve) {
         const c = mine.hand[pending.hand];
-        if (c && evoTargets(st, "p", c).includes(x)) { playCard(st, "p", pending.hand, [], x); setPending(null); setHint(""); }
+        if (c && evoTargets(st, my, c).includes(x)) { playCard(st, my, pending.hand, [], x); setPending(null); setHint(""); sync(); }
         refresh();
         return;
       }
       const picked = pending.picked.includes(x) ? pending.picked.filter((v) => v !== x) : [...pending.picked, x];
       if (picked.length >= pending.need) {
-        playCard(st, "p", pending.hand, picked);
+        playCard(st, my, pending.hand, picked);
         setPending(null); setHint("");
+        sync();
       } else setPending({ ...pending, picked });
       refresh();
       return;
     }
-    if (canAttackWith(st, "p", x)) { setSel(sel === x ? null : x); setHint("Pick a target — an enemy card, or their HP."); return; }
-    if (canAttach(st, "p", x)) { attachEnergy(st, "p", x); setHint(""); refresh(); return; }
+    if (canAttackWith(st, my, x)) { setSel(sel === x ? null : x); setHint("Pick a target — an enemy card, or their HP."); return; }
+    if (canAttach(st, my, x)) { attachEnergy(st, my, x); setHint(""); sync(); refresh(); return; }
     const b = mine.board[x];
     if (!b) return;
     if (b.attacked) setHint(`${b.card.name} already attacked.`);
@@ -85,16 +115,19 @@ export default function Duel({ playerDeck, aiDeck, onDone }) {
   }
 
   function clickFoe(target) {
-    if (st.over || sel === null) return;
-    attack(st, "p", sel, target);
+    if (!myTurn || sel === null) return;
+    attack(st, my, sel, target);
     setSel(null);
+    sync();
     refresh();
   }
 
   function onEnd() {
-    if (st.over) return;
+    if (!myTurn) return;
     setSel(null); setPending(null); setHint("");
-    endTurn(st);
+    if (mode === "ai") endTurn(st);
+    else passTurn(st);
+    sync();
     refresh();
   }
 
@@ -102,11 +135,11 @@ export default function Duel({ playerDeck, aiDeck, onDone }) {
     <div className={`drow${ownSide ? " mineboard" : ""}`}>
       {side.board.map((b, x) => {
         const need = b.card.game === "pokemon" ? energyNeed(b.card) : 0;
-        const ready = ownSide && canAttackWith(st, "p", x);
+        const ready = ownSide && myTurn && canAttackWith(st, my, x);
         const cls = [
           "dcard", `t-${b.card.tier}`,
           ownSide && sel === x ? "sel" : "",
-          ownSide && pending && pending.picked.includes(x) ? "trib" : "",
+          ownSide && pending && pending.picked && pending.picked.includes(x) ? "trib" : "",
           ready ? "ready" : "",
           !ownSide && sel !== null ? "targetable" : "",
           b.attacked ? "spent" : "",
@@ -130,25 +163,28 @@ export default function Duel({ playerDeck, aiDeck, onDone }) {
   return (
     <div className="packscreen duelscreen">
       <button className={`dhp foe${sel !== null ? " targetable" : ""}`} onClick={() => clickFoe("face")}>
-        <b>AI</b> ♥ {Math.max(0, foe.hp)} <span className="dsub">· hand {foe.hand.length} · deck {foe.deck.length}</span>
+        <b>{themLabel}</b> ♥ {Math.max(0, foe.hp)} <span className="dsub">· hand {foe.hand.length} · deck {foe.deck.length}</span>
         {sel !== null && <span className="dsub"> — tap to attack!</span>}
       </button>
       <Board side={foe} ownSide={false} />
 
       <div className="duel-log">
+        {mode === "pvp" && !st.over && (
+          <div className={`turn-tag${myTurn ? " yours" : ""}`}>{myTurn ? "▶ your turn" : `⏳ ${themLabel}'s turn…`}</div>
+        )}
         {st.log.slice(-3).map((l, i) => <div key={st.log.length - 3 + i}>{l}</div>)}
       </div>
 
       <Board side={mine} ownSide={true} />
       <div className="dhp mine">
-        <b>You</b> ♥ {Math.max(0, mine.hp)}
+        <b>{meLabel}</b> ♥ {Math.max(0, mine.hp)}
         <span className="dsub"> · 💧{mine.mana}/{mine.maxMana} · ⚡{mine.energyUsed ? "used" : "ready"} · ⭐{mine.summonUsed ? "used" : "ready"} · deck {mine.deck.length}</span>
       </div>
 
       <div className="duel-hand">
         {mine.hand.map((c, i) => {
           const { kind, n } = costOf(c);
-          const ok = canPlay(st, "p", i);
+          const ok = myTurn && canPlay(st, my, i);
           return (
             <button key={`${c.game}:${c.id}:${i}`} className={`dcard hand t-${c.tier}${ok ? "" : " nope"}${pending && pending.hand === i ? " sel" : ""}`}
               onClick={() => clickHand(i)} title={`${c.name} · ${GAME_TAG[c.game]}${isEvolution(c) ? ` · evolves from ${c.evo}` : ""}`}>
@@ -163,17 +199,17 @@ export default function Duel({ playerDeck, aiDeck, onDone }) {
         {!mine.hand.length && <div className="drow-empty">empty hand</div>}
       </div>
 
-      {hint && !st.over && <div className="duel-hint">{hint}</div>}
+      {hint && !st.over && myTurn && <div className="duel-hint">{hint}</div>}
 
       <div className="arena-actions">
-        <button className="pull display" disabled={st.over} onClick={onEnd}>END TURN</button>
+        <button className="pull display" disabled={st.over || !myTurn} onClick={onEnd}>END TURN</button>
         <button className="pull10 display" onClick={done}>{st.over ? "DONE" : "CONCEDE"}</button>
       </div>
 
       {st.over && (
         <div className="duel-over" onClick={done}>
-          <div className={`ps-title display arena-${st.winner === "p" ? "win" : st.winner === "ai" ? "loss" : "draw"}`}>
-            {st.winner === "p" ? "VICTORY" : st.winner === "ai" ? "DEFEAT" : "DRAW"}
+          <div className={`ps-title display arena-${st.winner === my ? "win" : st.winner === their ? "loss" : "draw"}`}>
+            {st.winner === my ? "VICTORY" : st.winner === their ? "DEFEAT" : "DRAW"}
           </div>
           <div className="arena-sub">turn {st.turn} · tap to close</div>
         </div>

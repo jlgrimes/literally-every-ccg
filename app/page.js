@@ -52,11 +52,17 @@ export default function Home() {
   const [arena, setArena] = useState(null);
   const [arenaRec, setArenaRec] = useState(EMPTY_RECORD);
 
-  // duel: null | { playerDeck, aiDeck }
+  // duel: null | { mode:"ai", playerDeck, aiDeck } | { mode:"pvp", side, state, ext }
   const [duel, setDuel] = useState(null);
   const [deckKeys, setDeckKeys] = useState(null); // saved 20-card deck (binder keys)
   const [builder, setBuilder] = useState(false);
   const duelAfterSave = useRef(false);
+
+  // multiplayer: null | { phase:"menu", code } | { phase:"waiting", code, token }
+  const [mp, setMp] = useState(null);
+  const [pname, setPname] = useState("");
+  const mpSeq = useRef(0);
+  const mpInfo = useRef(null); // { code, token, side, names } for the live match
 
   const toastTimer = useRef(null);
   const loaded = useRef(false);
@@ -77,6 +83,7 @@ export default function Home() {
       const dk = JSON.parse(localStorage.getItem("omnideck:deck") || "null");
       if (Array.isArray(dk)) setDeckKeys(dk);
     } catch (e) {}
+    try { setPname(localStorage.getItem("omnideck:name") || ""); } catch (e) {}
     loaded.current = true;
     fetch("/api/meta").then((r) => r.json()).then(setMeta).catch(() => {});
   }, []);
@@ -95,9 +102,44 @@ export default function Home() {
 
   // lock page scroll while the pack screen is open
   useEffect(() => {
-    document.body.style.overflow = screen || inspect || arena || duel || builder ? "hidden" : "";
+    document.body.style.overflow = screen || inspect || arena || duel || builder || mp ? "hidden" : "";
     return () => { document.body.style.overflow = ""; };
-  }, [screen, inspect, arena, duel, builder]);
+  }, [screen, inspect, arena, duel, builder, mp]);
+
+  // multiplayer polling: waiting room → opponent joined; in-game → their moves
+  useEffect(() => {
+    const waiting = mp && mp.phase === "waiting";
+    const playing = duel && duel.mode === "pvp";
+    if (!waiting && !playing) return;
+    const tick = async () => {
+      const info = waiting ? { code: mp.code, token: mp.token } : mpInfo.current;
+      if (!info) return;
+      try {
+        const r = await fetch("/api/match", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ op: "state", code: info.code, token: info.token, since: mpSeq.current }),
+        });
+        const j = await r.json();
+        if (j.error) return;
+        if (waiting) {
+          if (j.status !== "waiting" && j.state) {
+            mpSeq.current = j.seq;
+            mpInfo.current = { code: mp.code, token: mp.token, side: "p", names: { me: pname || "You", them: j.guestName || "Guest" } };
+            setMp(null);
+            setDuel({ mode: "pvp", side: "p", state: j.state, ext: { seq: j.seq, state: j.state } });
+          }
+          return;
+        }
+        if (j.seq > mpSeq.current && j.state) {
+          mpSeq.current = j.seq;
+          setDuel((d) => (d && d.mode === "pvp" ? { ...d, ext: { seq: j.seq, state: j.state } } : d));
+        }
+      } catch (e) {}
+    };
+    const t = setInterval(tick, 2000);
+    tick();
+    return () => clearInterval(t);
+  }, [mp, duel && duel.mode === "pvp", pname]);
 
   function toast(msg) {
     setToastMsg(msg);
@@ -275,7 +317,85 @@ export default function Home() {
       }));
       if (result === "win") celebrate("epic");
     }
+    mpInfo.current = null;
     setDuel(null);
+  }
+
+  // ---------- multiplayer ----------
+  function setName(v) {
+    setPname(v);
+    try { localStorage.setItem("omnideck:name", v); } catch (e) {}
+  }
+
+  // both flows need your saved deck — send its cards along
+  async function deckForMp() {
+    const binder = await healFighters();
+    if (!validDeck(deckKeys, binder)) {
+      setMp(null);
+      const owned = Object.values(binder).filter((c) => Array.isArray(c.bs)).reduce((n, c) => n + (c.count || 1), 0);
+      if (owned < 20) toast(`You need 20 fighters for a deck — you own ${owned}. Rip more packs!`);
+      else { duelAfterSave.current = false; setBuilder(true); toast("Build your deck first"); }
+      return null;
+    }
+    return deckKeys.map((k) => binder[k]);
+  }
+
+  async function mpCreate() {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const deck = await deckForMp();
+      if (!deck) return;
+      const r = await fetch("/api/match", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ op: "create", name: pname || "Host", deck }),
+      });
+      const j = await r.json();
+      if (j.error) { toast(j.error); return; }
+      mpSeq.current = 0;
+      setMp({ phase: "waiting", code: j.code, token: j.token });
+    } catch (e) { toast("Couldn't open a match — try again"); }
+    finally { setBusy(false); }
+  }
+
+  async function mpJoin(codeInput) {
+    if (busy) return;
+    const code = String(codeInput || "").toUpperCase().trim();
+    if (code.length !== 6) { toast("Enter the 6-letter match code"); return; }
+    setBusy(true);
+    try {
+      const deck = await deckForMp();
+      if (!deck) return;
+      const r = await fetch("/api/match", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ op: "join", code, name: pname || "Guest", deck }),
+      });
+      const j = await r.json();
+      if (j.error) { toast(j.error); return; }
+      const s = await (await fetch("/api/match", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ op: "state", code, token: j.token, since: 0 }),
+      })).json();
+      if (s.error || !s.state) { toast("Couldn't load the match"); return; }
+      mpSeq.current = s.seq;
+      mpInfo.current = { code, token: j.token, side: "ai", names: { me: pname || "You", them: s.hostName || "Host" } };
+      setMp(null);
+      setDuel({ mode: "pvp", side: "ai", state: s.state, ext: { seq: s.seq, state: s.state } });
+    } catch (e) { toast("Couldn't join — try again"); }
+    finally { setBusy(false); }
+  }
+
+  async function pvpSync(state) {
+    const info = mpInfo.current;
+    if (!info) return;
+    try {
+      const r = await fetch("/api/match", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ op: "move", code: info.code, token: info.token, state }),
+      });
+      const j = await r.json();
+      if (j.seq) mpSeq.current = j.seq;
+    } catch (e) {}
   }
 
   function toggleFighter(k) {
@@ -359,6 +479,7 @@ export default function Home() {
               {busy ? "SHUFFLING…" : "OPEN PACK"}
             </button>
             <button className="pull10 display" disabled={busy} onClick={openDuel}>⚔ DUEL</button>
+            <button className="pull10 display" disabled={busy} onClick={() => setMp({ phase: "menu", code: "" })}>🌐 VS FRIEND</button>
             <button className="pull10 display" disabled={busy} onClick={openBuilder}>🃏 DECK</button>
             <button className="pull10 display" disabled={busy} onClick={openArena}>🗡 SKIRMISH</button>
           </div>
@@ -531,6 +652,42 @@ export default function Home() {
         </div>
       )}
 
+      {/* ---------- multiplayer menu / waiting room ---------- */}
+      {mp && !duel && !builder && (
+        <div className="packscreen arenascreen">
+          <div className="ps-portal" />
+          {mp.phase === "menu" && (
+            <>
+              <div className="ps-title display">Duel a friend</div>
+              <div className="arena-sub">Same rules, real opponent. You both bring your own 20-card deck.</div>
+              <input className="mp-input" maxLength={20} placeholder="your name" value={pname}
+                onChange={(e) => setName(e.target.value)} />
+              <div className="arena-actions">
+                <button className="pull display" disabled={busy} onClick={mpCreate}>CREATE MATCH</button>
+              </div>
+              <div className="mp-divider">— or join one —</div>
+              <input className="mp-input mp-code-input" maxLength={6} placeholder="MATCH CODE" value={mp.code}
+                onChange={(e) => setMp({ ...mp, code: e.target.value.toUpperCase() })} />
+              <div className="arena-actions">
+                <button className="pull display" disabled={busy || (mp.code || "").length !== 6} onClick={() => mpJoin(mp.code)}>JOIN MATCH</button>
+                <button className="pull10 display" onClick={() => setMp(null)}>BACK</button>
+              </div>
+            </>
+          )}
+          {mp.phase === "waiting" && (
+            <>
+              <div className="ps-title display">Match created</div>
+              <div className="arena-sub">Send this code to your friend — the duel starts the moment they join.</div>
+              <div className="mp-code display">{mp.code}</div>
+              <div className="ps-continue">waiting for your opponent…</div>
+              <div className="arena-actions">
+                <button className="pull10 display" onClick={() => setMp(null)}>CANCEL</button>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
       {/* ---------- deck builder ---------- */}
       {builder && !duel && (
         <DeckBuilder pool={eligibleBinder} initial={deckKeys} onSave={saveDeck}
@@ -538,7 +695,11 @@ export default function Home() {
       )}
 
       {/* ---------- merged-rules duel ---------- */}
-      {duel && <Duel playerDeck={duel.playerDeck} aiDeck={duel.aiDeck} onDone={duelDone} />}
+      {duel && duel.mode !== "pvp" && <Duel playerDeck={duel.playerDeck} aiDeck={duel.aiDeck} onDone={duelDone} />}
+      {duel && duel.mode === "pvp" && (
+        <Duel mode="pvp" mySide={duel.side} initialState={duel.state} external={duel.ext}
+          onSync={pvpSync} names={mpInfo.current ? mpInfo.current.names : null} onDone={duelDone} />
+      )}
 
       {/* ---------- single-card inspect overlay ---------- */}
       {inspect && (

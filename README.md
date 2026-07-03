@@ -20,6 +20,8 @@ with unified rarity tiers.
   sacrifice a Grizzly Bears to summon Blue-Eyes White Dragon)
 - Deck building, required: construct your 20-card duel deck from cards you
   actually pulled — duplicates allowed up to the copies you own
+- Multiplayer: create a match, send the 6-letter code to a friend, and duel
+  each other's real decks under the merged rules — turn-based with live sync
 - Quick skirmishes: 3-lane stat fights with real P/T, HP/attack and ATK/DEF
   normalized onto one 1–100 scale, against a tier-matched AI
 - Unified 6/3/1 booster structure (hit slot: Legendary 8% / Epic 20% / Rare 72%)
@@ -42,6 +44,16 @@ npm install
 npm run seed   # rebuild data/cards.json from live sources (~5 min)
 npm run dev
 ```
+
+### Multiplayer storage
+
+Matches are stored via `lib/matchStore.js`. Locally it falls back to an
+in-process map (two tabs against `npm run dev` just work). In production
+(serverless) it needs Supabase:
+
+1. Create a Supabase project and run `supabase/schema.sql` in its SQL editor.
+2. Set `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` in the deployment
+   environment. The service key is only used server-side, in API routes.
 
 ## Credits & License
 
