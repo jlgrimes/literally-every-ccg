@@ -3,10 +3,10 @@ import { useEffect, useRef, useState, useReducer } from "react";
 import {
   initDuel, playCard, attachEnergy, attack, endTurn, passTurn, concede,
   canPlay, canAttach, canAttackWith, costOf, energyNeed, tributeNeed,
-  isEvolution, evoTargets,
+  isEvolution, evoTargets, isSpell, fxTargets, FX_TARGET, FX_LABEL,
 } from "../lib/duel";
 
-const COST_GLYPH = { mana: "💧", energy: "⚡", tribute: "⭐" };
+const COST_GLYPH = { mana: "💧", energy: "⚡", tribute: "⭐", trainer: "🎒", spell: "✨" };
 const GAME_TAG = { mtg: "MTG", pokemon: "PKM", yugioh: "YGO" };
 
 // mode "ai": decks in, engine runs the opponent.
@@ -66,10 +66,24 @@ export default function Duel({
     if (pending) { setPending(null); return; }
     if (!canPlay(st, my, i)) {
       const { kind, n } = costOf(c);
-      if (isEvolution(c)) setHint(`🧬 ${c.name} evolves from ${c.evo} — you need one on your board first.`);
+      if (isSpell(c)) {
+        if (c.game === "mtg") setHint(`${c.name} needs ${n}💧 — you have ${mine.mana}.`);
+        else if (c.game === "pokemon") setHint(mine.trainerUsed ? "Already played a trainer this turn." : "No valid target for that trainer.");
+        else setHint(mine.spellUsed ? "Already cast a spell/trap this turn." : "No valid target for that card.");
+      }
+      else if (isEvolution(c)) setHint(`🧬 ${c.name} evolves from ${c.evo} — you need one on your board first.`);
       else if (mine.board.length >= 5) setHint("Board is full.");
       else if (kind === "mana") setHint(`${c.name} needs ${n}💧 — you have ${mine.mana}.`);
       else if (kind === "tribute") setHint(mine.summonUsed ? "Already normal-summoned this turn." : `${c.name} needs ${n}⭐ tribute${n > 1 ? "s" : ""} — not enough creatures.`);
+      return;
+    }
+    if (isSpell(c)) {
+      const kind = c.fx[0];
+      const need = FX_TARGET[kind];
+      if (need === null) { playCard(st, my, i); setHint(""); sync(); refresh(); return; }
+      if (need === "deck") { setPending({ hand: i, tutor: true }); setHint("Deck search — pick a card to add to your hand."); return; }
+      setPending({ hand: i, spell: true, own: need === "own" });
+      setHint(need === "own" ? `${FX_LABEL[kind]} Pick one of your creatures.` : kind === "dmg" ? `${FX_LABEL[kind]} Pick an enemy card — or their HP.` : `${FX_LABEL[kind]} Pick an enemy creature.`);
       return;
     }
     if (isEvolution(c)) {
@@ -93,6 +107,12 @@ export default function Duel({
   function clickMine(x) {
     if (!myTurn) return;
     if (pending) {
+      if (pending.spell) {
+        if (pending.own && playCard(st, my, pending.hand, [], null, x)) { setPending(null); setHint(""); sync(); }
+        refresh();
+        return;
+      }
+      if (pending.tutor) { setPending(null); setHint(""); refresh(); return; }
       if (pending.evolve) {
         const c = mine.hand[pending.hand];
         if (c && evoTargets(st, my, c).includes(x)) { playCard(st, my, pending.hand, [], x); setPending(null); setHint(""); sync(); }
@@ -118,10 +138,23 @@ export default function Duel({
   }
 
   function clickFoe(target) {
-    if (!myTurn || sel === null) return;
+    if (!myTurn) return;
+    if (pending && pending.spell && !pending.own) {
+      if (playCard(st, my, pending.hand, [], null, target)) { setPending(null); setHint(""); sync(); }
+      else setHint("That card can't hit the face — pick an enemy creature.");
+      refresh();
+      return;
+    }
+    if (sel === null) return;
     attack(st, my, sel, target);
     setSel(null);
     sync();
+    refresh();
+  }
+
+  function clickTutor(deckIdx) {
+    if (!myTurn || !pending || !pending.tutor) return;
+    if (playCard(st, my, pending.hand, [], null, deckIdx)) { setPending(null); setHint(""); sync(); }
     refresh();
   }
 
@@ -144,7 +177,8 @@ export default function Duel({
           ownSide && sel === x ? "sel" : "",
           ownSide && pending && pending.picked && pending.picked.includes(x) ? "trib" : "",
           ready ? "ready" : "",
-          !ownSide && sel !== null ? "targetable" : "",
+          !ownSide && (sel !== null || (pending && pending.spell && !pending.own)) ? "targetable" : "",
+          ownSide && pending && pending.spell && pending.own ? "targetable" : "",
           b.attacked ? "spent" : "",
         ].filter(Boolean).join(" ");
         return (
@@ -165,7 +199,7 @@ export default function Duel({
 
   return (
     <div className="packscreen duelscreen">
-      <button className={`dhp foe${sel !== null ? " targetable" : ""}`} onClick={() => clickFoe("face")}>
+      <button className={`dhp foe${sel !== null || (pending && pending.spell && !pending.own) ? " targetable" : ""}`} onClick={() => clickFoe("face")}>
         <b>{themLabel}</b> ♥ {Math.max(0, foe.hp)} <span className="dsub">· hand {foe.hand.length} · deck {foe.deck.length}</span>
         {sel !== null && <span className="dsub"> — tap to attack!</span>}
       </button>
@@ -181,21 +215,29 @@ export default function Duel({
       <Board side={mine} ownSide={true} />
       <div className="dhp mine">
         <b>{meLabel}</b> ♥ {Math.max(0, mine.hp)}
-        <span className="dsub"> · 💧{mine.mana}/{mine.maxMana} · ⚡{mine.energyUsed ? "used" : "ready"} · ⭐{mine.summonUsed ? "used" : "ready"} · deck {mine.deck.length}</span>
+        <span className="dsub"> · 💧{mine.mana}/{mine.maxMana} · ⚡{mine.energyUsed ? "✗" : "✓"} · ⭐{mine.summonUsed ? "✗" : "✓"} · 🎒{mine.trainerUsed ? "✗" : "✓"} · ✨{mine.spellUsed ? "✗" : "✓"} · deck {mine.deck.length}</span>
       </div>
 
       <div className="duel-hand">
         {mine.hand.map((c, i) => {
           const { kind, n } = costOf(c);
           const ok = myTurn && canPlay(st, my, i);
+          const spell = isSpell(c);
           return (
             <button key={`${c.game}:${c.id}:${i}`} className={`dcard hand t-${c.tier}${ok ? "" : " nope"}${pending && pending.hand === i ? " sel" : ""}`}
-              onClick={() => clickHand(i)} title={`${c.name} · ${GAME_TAG[c.game]}${isEvolution(c) ? ` · evolves from ${c.evo}` : ""}`}>
+              onClick={() => clickHand(i)}
+              title={`${c.name} · ${GAME_TAG[c.game]}${isEvolution(c) ? ` · evolves from ${c.evo}` : ""}${spell ? ` · ${c.fx[0]} ${c.fx[1]}` : ""}`}>
               <img src={c.img} alt={c.name} referrerPolicy="no-referrer" />
-              <span className="dcost">{COST_GLYPH[kind]}{n}</span>
+              <span className="dcost">{kind === "mana" ? <>{COST_GLYPH.mana}{n}</> : spell ? COST_GLYPH[kind] : <>{COST_GLYPH[kind]}{n}</>}</span>
               {isEvolution(c) && <span className="dtag">🧬</span>}
-              <span className="dstat datk">{c.bs[0]}⚔</span>
-              <span className="dstat dhpv">{c.bs[1]}♥</span>
+              {spell ? (
+                <span className="dstat datk">{FX_LABEL[c.fx[0]]}{c.fx[0] === "kill" || c.fx[0] === "tutor" || c.fx[0] === "tutorc" ? "" : c.fx[1]}</span>
+              ) : (
+                <>
+                  <span className="dstat datk">{c.bs[0]}⚔</span>
+                  <span className="dstat dhpv">{c.bs[1]}♥</span>
+                </>
+              )}
             </button>
           );
         })}
@@ -203,6 +245,26 @@ export default function Duel({
       </div>
 
       {hint && !st.over && myTurn && <div className="duel-hint">{hint}</div>}
+
+      {/* deck search — tutors */}
+      {pending && pending.tutor && !st.over && (
+        <div className="tutor-panel">
+          <div className="tutor-title">🔍 Your deck — pick one <button className="tutor-x" onClick={() => { setPending(null); setHint(""); }}>✕</button></div>
+          <div className="tutor-grid">
+            {fxTargets(st, my, mine.hand[pending.hand] || { fx: ["tutor", 1] }).map((di) => {
+              const d = mine.deck[di];
+              return (
+                <button key={`${d.game}:${d.id}:${di}`} className={`dcard t-${d.tier}`} onClick={() => clickTutor(di)} title={d.name}>
+                  <img src={d.img} alt={d.name} referrerPolicy="no-referrer" />
+                  {d.bs
+                    ? <><span className="dstat datk">{d.bs[0]}⚔</span><span className="dstat dhpv">{d.bs[1]}♥</span></>
+                    : <span className="dstat datk">{FX_LABEL[d.fx[0]]}</span>}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       <div className="arena-actions">
         <button className="pull display" disabled={st.over || !myTurn} onClick={onEnd}>END TURN</button>

@@ -139,6 +139,41 @@ function mapStats(game, s) {
   return null;
 }
 
+// spell/trainer effects: classify rules text into a tiny shared effect
+// vocabulary, fx: [kind, n] on the same 1-100 scale as battle stats.
+// Kinds: dmg, kill, nuke, draw, buff, weak, heal, tutor (search deck for any
+// card), tutorc (search deck for a creature/monster/Pokémon).
+const clampN = (v, lo, hi) => Math.max(lo, Math.min(hi, Math.round(v)));
+const WORD_N = { a: 1, an: 1, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7 };
+const wnum = w => WORD_N[w] || parseInt(w, 10) || 0;
+const FX_SCALE = { mtg: 11, pokemon: 1 / 2.4, yugioh: 1 / 45 };
+function mapFx(game, text, opts = {}) {
+  const t = (text || "").toLowerCase().replace(/\s+/g, " ");
+  const s = FX_SCALE[game];
+  let m;
+  if (/search your (deck|library)/.test(t) || /add (?:1|one) [^.]{0,60}from your deck to your hand/.test(t)) {
+    return [/(pokémon|pokemon|monster|creature)/.test(t) ? "tutorc" : "tutor", 1];
+  }
+  if (/special summon[^.]{0,40}(gy|graveyard)/.test(t) || /(gy|graveyard)[^.]{0,40}special summon/.test(t)) return ["tutorc", 1];
+  if (/destroy all (monsters|creatures)/.test(t)) return ["nuke", 99];
+  if ((m = t.match(/(\d+) damage to (all|each)/))) return ["nuke", clampN(+m[1] * s, 8, 60)];
+  if (/destroy (target|1|one|up to one) [^.]{0,30}(creature|monster)/.test(t)) return ["kill", 0];
+  if ((m = t.match(/deals? (\d+) damage/)) || (m = t.match(/inflict (\d+) damage/))) return ["dmg", clampN(+m[1] * s, 6, 60)];
+  if ((m = t.match(/draws? (\d+|a|an|one|two|three|four|five|six|seven) cards?/))) return ["draw", clampN(wnum(m[1]), 1, 3)];
+  if ((m = t.match(/\+(\d+)\/\+(\d+)/))) return ["buff", clampN(Math.max(+m[1], +m[2]) * 11, 6, 33)];
+  if ((m = t.match(/gains? (\d+) atk/))) return ["buff", clampN(+m[1] / 45, 6, 33)];
+  if ((m = t.match(/-(\d+)\/-(\d+)/))) return ["weak", clampN(Math.max(+m[1], +m[2]) * 11, 6, 33)];
+  if ((m = t.match(/loses? (\d+) atk/))) return ["weak", clampN(+m[1] / 45, 6, 33)];
+  if ((m = t.match(/gain(?:s)? (\d+) life/))) return ["heal", clampN(+m[1], 3, 12)];
+  if ((m = t.match(/remove (?:up to )?(\d+) damage counters/))) return ["heal", clampN(+m[1] * 3, 3, 12)];
+  if ((m = t.match(/heal (\d+) damage/))) return ["heal", clampN(+m[1] / 3.4, 3, 12)];
+  if (game === "mtg") return ["dmg", clampN((opts.cmc || 2) * 9, 9, 45)];
+  if (game === "pokemon") return ["draw", 1];
+  if (opts.equip) return ["buff", 22];
+  if (opts.trap) return ["weak", 11];
+  return ["dmg", 18];
+}
+
 const out = [];
 const seen = new Set();
 function add(c) {
@@ -166,8 +201,11 @@ async function seedMTG() {
     const face = (c.card_faces && c.card_faces[0]) || c;
     const num = v => (/^\d+$/.test(v || "") ? +v : NaN);
     const bs = mapStats("mtg", { pow: num(c.power ?? face.power), tou: num(c.toughness ?? face.toughness) });
+    const typeLine = c.type_line || face.type_line || "";
+    const isSpell = !bs && /\b(Instant|Sorcery)\b/.test(typeLine);
+    const fx = isSpell ? mapFx("mtg", c.oracle_text || face.oracle_text || "", { cmc: Math.round(c.cmc || 0) }) : null;
     // mc: real converted mana cost, used by the duel instead of derived cost
-    add({ id: c.oracle_id || c.id, name: c.name, game: "mtg", img: iu.normal, native: c.rarity, tier: mapRarity("mtg", c.rarity), set: c.set_name, ...(bs && { bs, mc: Math.round(c.cmc || 0) }) });
+    add({ id: c.oracle_id || c.id, name: c.name, game: "mtg", img: iu.normal, native: c.rarity, tier: mapRarity("mtg", c.rarity), set: c.set_name, ...(bs && { bs, mc: Math.round(c.cmc || 0) }), ...(fx && { fx, mc: Math.round(c.cmc || 0) }) });
   }
   console.log("MTG done:", count("mtg"));
 }
@@ -189,8 +227,9 @@ async function seedPokemon() {
       let dmg = 0;
       for (const a of c.attacks || []) { const d = parseInt(a.damage, 10); if (d > dmg) dmg = d; }
       const bs = c.supertype === "Pokémon" ? mapStats("pokemon", { hp: parseInt(c.hp, 10), dmg }) : null;
+      const fx = c.supertype === "Trainer" ? mapFx("pokemon", (c.rules || []).join(" ")) : null;
       // evo: name of the pre-evolution — the duel only lets these be played on top of it
-      add({ id: c.id, name: c.name, game: "pokemon", img: c.images.large, native: c.rarity || "Common", tier: mapRarity("pokemon", c.rarity), set: setName[setId] || setId, ...(bs && { bs }), ...(bs && c.evolvesFrom && { evo: c.evolvesFrom }) });
+      add({ id: c.id, name: c.name, game: "pokemon", img: c.images.large, native: c.rarity || "Common", tier: mapRarity("pokemon", c.rarity), set: setName[setId] || setId, ...(bs && { bs }), ...(bs && c.evolvesFrom && { evo: c.evolvesFrom }), ...(fx && { fx }) });
     }
   }
   console.log("Pokémon done:", count("pokemon"));
@@ -212,7 +251,10 @@ async function seedYGO() {
       // link monsters have no DEF — treat as 0 so they fight as glass cannons
       const def = typeof c.def === "number" ? c.def : (typeof c.linkval === "number" ? 0 : NaN);
       const bs = /monster/i.test(c.type || "") ? mapStats("yugioh", { atk: c.atk, def }) : null;
-      add({ id: String(c.id), name: c.name, game: "yugioh", img, native, tier: mapRarity("yugioh", native), set: printing ? printing.set_name : "—", ...(bs && { bs }) });
+      const fx = /spell|trap/i.test(c.type || "")
+        ? mapFx("yugioh", c.desc || "", { trap: /trap/i.test(c.type), equip: /equip/i.test(c.race || "") })
+        : null;
+      add({ id: String(c.id), name: c.name, game: "yugioh", img, native, tier: mapRarity("yugioh", native), set: printing ? printing.set_name : "—", ...(bs && { bs }), ...(fx && { fx }) });
     }
     offset += batch.length;
     console.log(`Yu-Gi-Oh: ${offset}`);

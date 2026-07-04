@@ -1,6 +1,6 @@
 "use client";
 import { useMemo, useState } from "react";
-import { costOf, isEvolution, DECK_SIZE } from "../lib/duel";
+import { costOf, isEvolution, isSpell, FX_LABEL, DECK_SIZE } from "../lib/duel";
 
 const COST_GLYPH = { mana: "💧", energy: "⚡", tribute: "⭐" };
 const TIER_ORDER = ["common", "uncommon", "rare", "epic", "legendary"];
@@ -16,8 +16,9 @@ export default function DeckBuilder({ pool, initial, onSave, onClose }) {
   for (const k of deck) inDeck[k] = (inDeck[k] || 0) + 1;
   const owned = pool.reduce((n, c) => n + (c.count || 1), 0);
 
+  const power = (c) => (c.bs ? c.bs[0] + c.bs[1] : (c.fx ? c.fx[1] : 0));
   const sorted = useMemo(
-    () => [...pool].sort((a, b) => rank(b.tier) - rank(a.tier) || b.bs[0] + b.bs[1] - (a.bs[0] + a.bs[1])),
+    () => [...pool].sort((a, b) => rank(b.tier) - rank(a.tier) || power(b) - power(a)),
     [pool]
   );
 
@@ -60,13 +61,16 @@ export default function DeckBuilder({ pool, initial, onSave, onClose }) {
           const n = inDeck[k] || 0;
           const max = c.count || 1;
           const { kind, n: cost } = costOf(c);
+          const costTag = kind === "mana" ? `💧${cost} · ` : kind === "trainer" ? "🎒 · " : kind === "spell" ? "✨ · " : `${COST_GLYPH[kind]}${cost} · `;
+          const statTag = c.bs ? `${c.bs[0]}⚔${c.bs[1]}♥` : `${FX_LABEL[c.fx[0]]}${c.fx[0] === "kill" || c.fx[0] === "tutor" || c.fx[0] === "tutorc" ? "" : c.fx[1]}`;
           return (
             <button key={k} className={`thumb t-${c.tier}${n ? " picked" : ""}${n >= max ? " maxed" : ""}`}
-              title={`${c.name} · ${c.bs[0]}⚔/${c.bs[1]}♥ · own ×${max}${isEvolution(c) ? ` · evolves from ${c.evo}` : ""}`}
+              title={`${c.name} · ${c.bs ? `${c.bs[0]}⚔/${c.bs[1]}♥` : `effect: ${c.fx[0]} ${c.fx[1]}`} · own ×${max}${isEvolution(c) ? ` · evolves from ${c.evo}` : ""}`}
               onClick={() => (n >= max ? removeOne(k) : add(k))}>
               <img src={c.img} alt={c.name} loading="lazy" referrerPolicy="no-referrer" />
-              <span className="bs-badge">{COST_GLYPH[kind]}{cost} · {c.bs[0]}⚔{c.bs[1]}♥</span>
+              <span className="bs-badge">{costTag}{statTag}</span>
               {isEvolution(c) && <span className="evo-badge">🧬</span>}
+              {isSpell(c) && <span className="evo-badge">{FX_LABEL[c.fx[0]]}</span>}
               {max > 1 && <span className="count-badge">×{max}</span>}
               {n > 0 && <span className="pick-badge">{n}</span>}
             </button>

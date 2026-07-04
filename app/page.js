@@ -237,7 +237,7 @@ export default function Home() {
   // healed binder so callers don't have to wait for the state update.
   async function healFighters() {
     const need = Object.entries(state.binder)
-      .filter(([, c]) => BATTLE_GAMES.includes(c.game) && !c.bs)
+      .filter(([, c]) => BATTLE_GAMES.includes(c.game) && !c.bs && !c.fx)
       .map(([k]) => k);
     if (!need.length) return state.binder;
     try {
@@ -247,13 +247,13 @@ export default function Home() {
       });
       const j = await r.json();
       if (!j.ok || !j.ok.length) return state.binder;
-      const healed = { ...state.binder };
-      for (const { key: k, bs } of j.ok) if (healed[k]) healed[k] = { ...healed[k], bs };
-      setState((s) => {
-        const binder = { ...s.binder };
-        for (const { key: k, bs } of j.ok) if (binder[k]) binder[k] = { ...binder[k], bs };
-        return { ...s, binder };
-      });
+      const apply = (binder) => {
+        const next = { ...binder };
+        for (const { key: k, ...patch } of j.ok) if (next[k]) next[k] = { ...next[k], ...patch };
+        return next;
+      };
+      const healed = apply(state.binder);
+      setState((s) => ({ ...s, binder: apply(s.binder) }));
       return healed;
     } catch (e) { return state.binder; }
   }
@@ -270,7 +270,7 @@ export default function Home() {
     const used = {};
     for (const k of keys) {
       const c = binder[k];
-      if (!c || !Array.isArray(c.bs)) return false;
+      if (!c || (!Array.isArray(c.bs) && !Array.isArray(c.fx))) return false;
       used[k] = (used[k] || 0) + 1;
       if (used[k] > (c.count || 1)) return false;
     }
@@ -298,8 +298,8 @@ export default function Home() {
     try {
       const binder = await healFighters();
       if (validDeck(deckKeys, binder)) { await startDuel(deckKeys, binder); return; }
-      const owned = Object.values(binder).filter((c) => Array.isArray(c.bs)).reduce((n, c) => n + (c.count || 1), 0);
-      if (owned < 20) toast(`You need 20 fighters for a deck — you own ${owned}. Rip more packs!`);
+      const owned = Object.values(binder).filter((c) => Array.isArray(c.bs) || Array.isArray(c.fx)).reduce((n, c) => n + (c.count || 1), 0);
+      if (owned < 20) toast(`You need 20 duel-legal cards for a deck — you own ${owned}. Rip more packs!`);
       else { duelAfterSave.current = true; setBuilder(true); }
     } finally { setBusy(false); }
   }
@@ -466,9 +466,10 @@ export default function Home() {
   }
 
   const games = meta ? Object.keys(meta.byGame) : [];
-  const eligibleBinder = Object.values(state.binder).filter((c) => Array.isArray(c.bs));
-  const fighterPool = eligibleBinder
-    .slice()
+  // deck building takes creatures AND spells; the skirmish picker is stats-only
+  const eligibleBinder = Object.values(state.binder).filter((c) => Array.isArray(c.bs) || Array.isArray(c.fx));
+  const fighterPool = Object.values(state.binder)
+    .filter((c) => Array.isArray(c.bs))
     .sort((a, b) => rank(b.tier) - rank(a.tier) || b.bs[0] + b.bs[1] - (a.bs[0] + a.bs[1]))
     .slice(0, 200);
   const binderCards = Object.values(state.binder)

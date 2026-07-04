@@ -18,6 +18,11 @@ with unified rarity tiers.
   with energy attached and evolve on top of their pre-evolutions, and
   Yu-Gi-Oh monsters tribute-summon by sacrificing your board (yes, you can
   sacrifice a Grizzly Bears to summon Blue-Eyes White Dragon)
+- Spells, trainers and traps: ~15,000 non-creature cards classified into a
+  shared effect vocabulary (damage, destroy, draw, buff, weaken, heal, board
+  nuke, and deck-search tutors) with magnitudes read from their real rules
+  text — Lightning Bolt burns, Professor Oak draws, Raigeki wipes the board,
+  Demonic Tutor searches your deck
 - Deck building, required: construct your 20-card duel deck from cards you
   actually pulled — duplicates allowed up to the copies you own
 - Multiplayer: create a match, send the 6-letter code to a friend, and duel
