@@ -22,7 +22,6 @@ const GAME_CHIP = {
 const rank = (t) => TIER_ORDER.indexOf(t);
 const key = (c) => `${c.game}:${c.id}`;
 const EMPTY = { pulls: 0, tiers: { common: 0, uncommon: 0, rare: 0, epic: 0, legendary: 0 }, binder: {} };
-const BATTLE_GAMES = ["mtg", "pokemon", "yugioh"];
 const EMPTY_RECORD = { w: 0, l: 0, d: 0 };
 
 function loadOk(src) {
@@ -248,8 +247,7 @@ export default function Home() {
   // healed binder so callers don't have to wait for the state update.
   async function healFighters() {
     const need = Object.entries(state.binder)
-      .filter(([, c]) => BATTLE_GAMES.includes(c.game) &&
-        ((!c.bs && !c.fx) || (c.game === "pokemon" && c.bs && !c.atks)))
+      .filter(([, c]) => (!c.bs && !c.fx) || (c.game === "pokemon" && c.bs && !c.atks))
       .map(([k]) => k);
     if (!need.length) return state.binder;
     try {
@@ -636,7 +634,8 @@ export default function Home() {
             <div className="shelf tabshelf">
               <h2 className="display">Battle</h2>
               <div className="tabnote">
-                OMNIRULES — Magic, Pokémon and Yu-Gi-Oh! merged into one game.
+                OMNIRULES — all 14 games, one merged rulebook: mana &amp; summoning sickness,
+                Pokémon energy &amp; evolution, Yu-Gi-Oh tributes.
                 {activeDeck ? <> Active deck: <b>{activeDeck.name}</b>.</> : <> Build a deck in the DECKS tab first.</>}
               </div>
               <div className="actions">
@@ -743,8 +742,8 @@ export default function Home() {
               <div className="ps-title display">Choose your fighters</div>
               <div className="arena-sub">
                 {fighterPool.length
-                  ? <>Pick 3 — Magic creatures, Pokémon &amp; Yu-Gi-Oh! monsters battle with their real stats, normalized to one scale.</>
-                  : <>No fighters in your binder yet. Rip packs for Magic, Pokémon or Yu-Gi-Oh! cards — creatures and monsters can battle.</>}
+                  ? <>Pick 3 — every game fights on one shared ATK/HP scale: real printed stats where the game has them, rarity-derived power everywhere else.</>
+                  : <>No fighters in your binder yet. Rip a pack — every card can battle.</>}
               </div>
               {fighterPool.length > 0 && (
                 <div className="arena-grid">

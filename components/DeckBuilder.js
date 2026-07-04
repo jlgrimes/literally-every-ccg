@@ -4,7 +4,11 @@ import { costOf, isEvolution, isSpell, pkmAtks, FX_LABEL, DECK_SIZE } from "../l
 
 const COST_GLYPH = { mana: "💧", energy: "⚡", tribute: "⭐", trainer: "🎒", spell: "✨" };
 const TIER_ORDER = ["common", "uncommon", "rare", "epic", "legendary"];
-const GAME_CHIP = { mtg: "Magic", pokemon: "Pokémon", yugioh: "Yu-Gi-Oh!" };
+const GAME_CHIP = {
+  mtg: "Magic", pokemon: "Pokémon", yugioh: "Yu-Gi-Oh!", lorcana: "Lorcana", onepiece: "One Piece",
+  gundam: "Gundam", dbfusion: "DB Fusion", unionarena: "Union Arena", swu: "SW Unlimited", fab: "Flesh & Blood",
+  riftbound: "Riftbound", digimon: "Digimon", netrunner: "Netrunner", weiss: "Weiß Schwarz",
+};
 const FX_TEXT = {
   dmg: (n) => `Deals ${n} damage to a creature — or ${Math.ceil(n / 10)} to the face`,
   kill: () => "Destroys an enemy creature",
@@ -39,6 +43,7 @@ const statChip = (c) => (c.bs ? `${c.bs[0]}⚔ ${c.bs[1]}♥` : `${FX_LABEL[c.fx
 // pool: duel-legal binder cards (carry .count). initial: saved deck keys.
 export default function DeckBuilder({ pool, initial, deckName, onSave, onClose }) {
   const byKey = useMemo(() => new Map(pool.map((c) => [key(c), c])), [pool]);
+  const poolGames = useMemo(() => [...new Set(pool.map((c) => c.game))].sort(), [pool]);
   const [deck, setDeck] = useState(() => (initial || []).filter((k) => byKey.has(k)));
   const [name, setName] = useState(deckName || "My deck");
   const [tab, setTab] = useState("pool");
@@ -108,7 +113,7 @@ export default function DeckBuilder({ pool, initial, deckName, onSave, onClose }
               )}
               {c.fx && <div className="sheet-row"><b>Effect</b> {FX_LABEL[c.fx[0]]} {(FX_TEXT[c.fx[0]] || (() => c.fx[0]))(c.fx[1])}</div>}
               {isEvolution(c) && <div className="sheet-row evo">🧬 Evolves from <b>{c.evo}</b> — needs it on your board</div>}
-              {c.game === "mtg" && c.bs && <div className="sheet-row dim">Summoning sickness: can't attack the turn it's played</div>}
+              {c.game !== "pokemon" && c.game !== "yugioh" && c.bs && <div className="sheet-row dim">Summoning sickness: can't attack the turn it's played</div>}
               <div className="sheet-row"><b>Owned</b> ×{max} · <b>In deck</b> {n}</div>
             </div>
           </div>
@@ -152,7 +157,7 @@ export default function DeckBuilder({ pool, initial, deckName, onSave, onClose }
           <div className="pool-toolbar">
             <input className="mp-input pool-search" placeholder="🔍 search cards…" value={q} onChange={(e) => setQ(e.target.value)} />
             <div className="filters filters-scroll">
-              {[["all", "All"], ["mtg", "Magic"], ["pokemon", "Pokémon"], ["yugioh", "Yu-Gi-Oh!"]].map(([g, l]) => (
+              {[["all", "All"], ...poolGames.map((g) => [g, GAME_CHIP[g] || g])].map(([g, l]) => (
                 <button key={g} className={`fchip${fGame === g ? " on" : ""}`} onClick={() => setFGame(g)}>{l}</button>
               ))}
               {[["all", "All types"], ["creature", "⚔ Creatures"], ["spell", "✨ Spells"], ["evo", "🧬 Evolutions"]].map(([kd, l]) => (

@@ -454,9 +454,15 @@ async function seedFAB() {
   for (const c of all) {
     const printing = (c.printings || []).find(p => p.image_url);
     if (!printing) continue;
-    const rar = (c.rarities || [])[0] || "C";
-    if (rar === "T") continue; // tokens
-    add({ id: c.unique_id, name: c.name, game: "fab", img: printing.image_url, native: rar, tier: mapRarity("fab", rar), set: printing.set_id || "—" });
+    const rar = printing.rarity || "C"; // rarity lives on the printing
+    if (rar === "T" || rar === "B") continue; // tokens / basics
+    const pow = parseInt(c.power, 10), def = parseInt(c.defense, 10);
+    // real combat stats where printed: power scales like MTG P/T, block
+    // value (defense) anchors the health side
+    const bs = Number.isFinite(pow)
+      ? [Math.max(1, Math.min(99, pow * 9)), Math.max(1, Math.min(99, (Number.isFinite(def) ? def : 2) * 14 + 8))]
+      : null;
+    add({ id: c.unique_id, name: c.name, game: "fab", img: printing.image_url, native: rar, tier: mapRarity("fab", rar), set: printing.set_id || "—", ...(bs && { bs }) });
   }
   console.log("fab done:", count("fab"));
 }
@@ -475,6 +481,29 @@ for (const [name, fn] of [["mtg", seedMTG], ["pokemon", seedPokemon], ["ygo", se
   try { await fn(); } catch (e) { console.log("seeder", name, "FAILED:", e.message); }
   if (globalThis.gc) globalThis.gc();
 }
+
+// ---------- universal playability: every card fights ----------
+// Cards with no battle data get stats derived from their rarity tier — the
+// shared power ladder — spread across the tier's band by a stable per-card
+// hash so no two play identically. (Same formula as the OMNIRULES engine
+// expects; see lib/duel.js.)
+const BAND = { common: [30, 56], uncommon: [46, 71], rare: [62, 91], epic: [86, 116], legendary: [106, 141] };
+function fnv(str) {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
+  return h;
+}
+let derived = 0;
+for (const c of out) {
+  if (Array.isArray(c.bs) || Array.isArray(c.fx)) continue;
+  const [lo, hi] = BAND[c.tier] || BAND.common;
+  const h = fnv(`${c.game}:${c.id}`);
+  const sum = lo + (h % (hi - lo + 1));
+  const atk = Math.max(1, Math.min(99, Math.round(sum * (0.35 + ((h >>> 8) % 31) / 100))));
+  c.bs = [atk, Math.max(1, Math.min(99, sum - atk))];
+  derived++;
+}
+console.log("universal playability: derived stats for", derived, "cards");
 
 mkdirSync("data", { recursive: true });
 writeFileSync("data/cards.json", JSON.stringify(out));

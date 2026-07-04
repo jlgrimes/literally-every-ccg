@@ -16,11 +16,15 @@ levels (a Lv.7 mega is a legendary, an egg is a common).
 ## Features
 
 - Swipe-to-tear pack opening with a tap-through card stack
-- OMNIRULES duels — three rulesets merged into one game: Magic cards cost
-  their real printed mana and suffer summoning sickness, Pokémon attack only
-  with energy attached and evolve on top of their pre-evolutions, and
-  Yu-Gi-Oh monsters tribute-summon by sacrificing your board (yes, you can
-  sacrifice a Grizzly Bears to summon Blue-Eyes White Dragon)
+- OMNIRULES duels — every card from all 14 games is playable under one
+  merged rulebook: Magic cards cost their real printed mana and suffer
+  summoning sickness, Pokémon attack only with energy attached and evolve
+  on top of their pre-evolutions, Yu-Gi-Oh monsters tribute-summon by
+  sacrificing your board (yes, you can sacrifice a Grizzly Bears to summon
+  Blue-Eyes White Dragon) — and the other eleven games all play on the
+  universal mana system, cost scaling with how powerful the card is: real
+  printed numbers where the game has them (Flesh and Blood power and block
+  values), rarity-tier power bands everywhere else
 - Magic-style combat: attackers swing at the player, and the defender
   assigns blockers — chump-block with a Kuriboh, wall with a Snorlax, or
   take it to the face; empty decks bleed fatigue
