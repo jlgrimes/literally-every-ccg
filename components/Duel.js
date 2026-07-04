@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState, useReducer } from "react";
 import {
   initDuel, playCard, attachEnergy, passTurn, concede,
-  declareAttack, resolveCombat, aiBlocks, runAiTurn,
+  declareAttack, resolveCombat, aiBlocks, aiStep, aiAttackers,
   canPlay, canAttach, canAttackWith, costOf, energyNeed, tributeNeed,
   isEvolution, evoTargets, isSpell, fxTargets, FX_TARGET, FX_LABEL,
 } from "../lib/duel";
@@ -26,6 +26,10 @@ export default function Duel({
   const [blkSel, setBlkSel] = useState(null);    // my blocker awaiting an attacker to block
   const [blocks, setBlocks] = useState({});      // attackerIdx -> my blocker idx
   const [aiPlan, setAiPlan] = useState(null);    // AI-mode: the AI's revealed block assignment
+  const [aiActing, setAiActing] = useState(false); // AI-mode: its turn is playing out step by step
+  const aiTimer = useRef(null);
+  const rootRef = useRef(null);
+  const svgRef = useRef(null);
   // pending: { hand, need, picked:[] } tribute mode | { hand, evolve:true } evolution targeting
   const [pending, setPending] = useState(null);
   const [hint, setHint] = useState("Play cards, then attack. Mana fuels Magic, energy powers Pokémon, tributes summon big Yu-Gi-Oh monsters.");
@@ -53,6 +57,27 @@ export default function Duel({
 
   function refresh() { force(); }
   function sync() { if (onSync) onSync(st); }
+
+  // the AI's turn plays out one action at a time, with a beat between
+  useEffect(() => () => clearTimeout(aiTimer.current), []);
+  function playAiTurnStaggered() {
+    setAiActing(true);
+    const step = () => {
+      const cur = stRef.current;
+      if (cur.over || cur.active !== "ai") { setAiActing(false); force(); return; }
+      if (aiStep(cur, "ai")) {
+        force();
+        aiTimer.current = setTimeout(step, 550);
+        return;
+      }
+      aiTimer.current = setTimeout(() => {
+        declareAttack(cur, "ai", aiAttackers(cur, "ai"));
+        setAiActing(false);
+        force();
+      }, 550);
+    };
+    aiTimer.current = setTimeout(step, 450);
+  }
 
   function done() {
     if (mode === "pvp" && !st.over) { concede(st, my); sync(); }
@@ -196,7 +221,7 @@ export default function Duel({
         refresh();
         return;
       }
-      if (!st.over && st.active === "ai") runAiTurn(st);
+      if (!st.over && st.active === "ai") playAiTurnStaggered();
     } else sync();
     refresh();
   }
@@ -206,7 +231,7 @@ export default function Duel({
     if (!aiPlan) return;
     resolveCombat(st, aiPlan);
     setAiPlan(null);
-    if (mode === "ai" && !st.over && st.active === "ai") runAiTurn(st);
+    if (mode === "ai" && !st.over && st.active === "ai") playAiTurnStaggered();
     refresh();
   }
 
@@ -217,6 +242,45 @@ export default function Duel({
     if (mode === "pvp") sync();
     refresh();
   }
+
+  // ---- attack/block arrows, drawn from live card positions ----
+  useEffect(() => {
+    const root = rootRef.current, svg = svgRef.current;
+    if (!svg) return;
+    const specs = [];
+    if (root && !st.over) {
+      if (myTurn && atkSel.length) for (const x of atkSel) specs.push([`[data-bid="m${x}"]`, ".dhp.foe", "atk"]);
+      if (iDefend && st.combat) for (const a of st.combat.attackers) {
+        if (blocks[a] !== undefined) specs.push([`[data-bid="m${blocks[a]}"]`, `[data-bid="f${a}"]`, "blk"]);
+        else specs.push([`[data-bid="f${a}"]`, ".dhp.mine", "atk"]);
+      }
+      if (aiPlan && st.combat) for (const a of st.combat.attackers) {
+        if (aiPlan[a] !== undefined) specs.push([`[data-bid="f${aiPlan[a]}"]`, `[data-bid="m${a}"]`, "blk"]);
+        else specs.push([`[data-bid="m${a}"]`, ".dhp.foe", "atk"]);
+      }
+      if (mode === "pvp" && iWait && st.combat) for (const a of st.combat.attackers) {
+        specs.push([`[data-bid="m${a}"]`, ".dhp.foe", "atk"]);
+      }
+    }
+    const mid = (el) => { const r = el.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; };
+    let html = "";
+    for (const [fs, ts, cls] of specs) {
+      const fe = root.querySelector(fs), te = root.querySelector(ts);
+      if (!fe || !te) continue;
+      const [x1, y1] = mid(fe), [x2, y2] = mid(te);
+      const bend = (x2 >= x1 ? 1 : -1) * Math.min(40, Math.abs(y2 - y1) / 3 + 12);
+      html += `<path class="ar-${cls}" d="M ${x1} ${y1} Q ${(x1 + x2) / 2 + bend} ${(y1 + y2) / 2} ${x2} ${y2}" marker-end="url(#ah-${cls})"/>`;
+    }
+    svg.innerHTML = `<defs>
+      <marker id="ah-atk" markerWidth="9" markerHeight="9" refX="7" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 Z" fill="#ff5d6c"/></marker>
+      <marker id="ah-blk" markerWidth="9" markerHeight="9" refX="7" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 Z" fill="#4fc58a"/></marker>
+    </defs>${html}`;
+  });
+  useEffect(() => {
+    const onR = () => force();
+    window.addEventListener("resize", onR);
+    return () => window.removeEventListener("resize", onR);
+  }, []);
 
   const attackerSet = blocking && st.combat ? new Set(st.combat.attackers) : new Set();
   const blockedBy = {};
@@ -248,7 +312,7 @@ export default function Duel({
           ownSide && pending && pending.spell && pending.own ? "targetable" : "",
         ].filter(Boolean).join(" ");
         return (
-          <button key={`${b.card.game}:${b.card.id}:${x}`} className={cls}
+          <button key={`${b.card.game}:${b.card.id}:${x}`} className={cls} data-bid={(ownSide ? "m" : "f") + x}
             onClick={() => (ownSide ? clickMine(x) : clickFoe(x))}
             title={`${b.card.name} · ${GAME_TAG[b.card.game]}`}>
             <img src={b.card.img} alt={b.card.name} referrerPolicy="no-referrer" />
@@ -266,13 +330,17 @@ export default function Duel({
   );
 
   return (
-    <div className="packscreen duelscreen">
+    <div className="packscreen duelscreen" ref={rootRef}>
+      <svg className="duel-arrows" ref={svgRef} />
       <button className={`dhp foe${pending && pending.spell && !pending.own ? " targetable" : ""}`} onClick={() => clickFoe("face")}>
         <b>{themLabel}</b> ♥ {Math.max(0, foe.hp)} <span className="dsub">· hand {foe.hand.length} · deck {foe.deck.length}</span>
       </button>
       <Board side={foe} ownSide={false} />
 
       <div className="duel-log">
+        {mode === "ai" && aiActing && !st.over && (
+          <div className="turn-tag">🤖 {themLabel} is playing…</div>
+        )}
         {!st.over && (iDefend || iWait) && (
           <div className={`turn-tag${iDefend ? " yours" : ""}`}>
             {iDefend ? "🛡 BLOCK! Assign blockers, then resolve"
