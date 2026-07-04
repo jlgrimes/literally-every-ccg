@@ -57,7 +57,7 @@ export default function Home() {
   const [duel, setDuel] = useState(null);
   // multiple saved decks: { decks: [{id, name, keys}], active: id }
   const [deckStore, setDeckStore] = useState({ decks: [], active: null });
-  const [mgr, setMgr] = useState(false);          // deck manager overlay
+  const [tab, setTab] = useState("home");         // bottom nav: home | cards | decks | battle
   const [editDeck, setEditDeck] = useState(null); // deck being edited in the builder
   const duelAfterSave = useRef(false);
   const activeDeck = deckStore.decks.find((d) => d.id === deckStore.active) || null;
@@ -123,9 +123,9 @@ export default function Home() {
 
   // lock page scroll while the pack screen is open
   useEffect(() => {
-    document.body.style.overflow = screen || inspect || arena || duel || editDeck || mgr || mp ? "hidden" : "";
+    document.body.style.overflow = screen || inspect || arena || duel || editDeck || mp ? "hidden" : "";
     return () => { document.body.style.overflow = ""; };
-  }, [screen, inspect, arena, duel, editDeck, mgr, mp]);
+  }, [screen, inspect, arena, duel, editDeck, mp]);
 
   // multiplayer polling: waiting room → opponent joined; in-game → their moves
   useEffect(() => {
@@ -318,10 +318,9 @@ export default function Home() {
     } finally { setBusy(false); }
   }
 
-  async function openManager() {
-    duelAfterSave.current = false;
-    await healFighters();
-    setMgr(true);
+  function goTab(t) {
+    setTab(t);
+    if (t === "decks") { duelAfterSave.current = false; healFighters(); }
   }
 
   function newDeck() {
@@ -347,7 +346,6 @@ export default function Home() {
     setEditDeck(null);
     if (duelAfterSave.current) {
       duelAfterSave.current = false;
-      setMgr(false);
       startDuel(keys, state.binder);
     } else toast("Deck saved");
   }
@@ -389,9 +387,13 @@ export default function Home() {
     const binder = await healFighters();
     if (!validDeck(deckKeys, binder)) {
       setMp(null);
-      const owned = Object.values(binder).filter((c) => Array.isArray(c.bs)).reduce((n, c) => n + (c.count || 1), 0);
-      if (owned < 20) toast(`You need 20 fighters for a deck — you own ${owned}. Rip more packs!`);
-      else { duelAfterSave.current = false; setBuilder(true); toast("Build your deck first"); }
+      const owned = Object.values(binder).filter((c) => Array.isArray(c.bs) || Array.isArray(c.fx)).reduce((n, c) => n + (c.count || 1), 0);
+      if (owned < 20) toast(`You need 20 duel-legal cards for a deck — you own ${owned}. Rip more packs!`);
+      else {
+        duelAfterSave.current = false;
+        setEditDeck(activeDeck ? { ...activeDeck } : { id: null, name: "Deck 1", keys: [] });
+        toast("Build your deck first");
+      }
       return null;
     }
     return deckKeys.map((k) => binder[k]);
@@ -519,113 +521,171 @@ export default function Home() {
     <>
       <div className="foil" id="foil" />
 
-      {/* ---------- main screen ---------- */}
+      {/* ---------- main screen (bottom-tab navigation) ---------- */}
       <div className="wrap">
-        <header>
-          <div className="lockup display">
-            <span className="lockup-top">LITERALLY EVERY</span>
-            <span className="lockup-big">CCG</span>
-          </div>
-          {meta && <div className="dbcount"><b>{meta.total.toLocaleString()}</b> real cards · {games.length} paper universes</div>}
-        </header>
+        {tab === "home" && (
+          <>
+            <header>
+              <div className="lockup display">
+                <span className="lockup-top">LITERALLY EVERY</span>
+                <span className="lockup-big">CCG</span>
+              </div>
+              {meta && <div className="dbcount"><b>{meta.total.toLocaleString()}</b> real cards · {games.length} paper universes</div>}
+            </header>
 
-        <div className="homestage">
-          <div className="idlehint">
-            <div className="idleglyph display">✦</div>
-            <div>{totalInDb ? totalInDb.toLocaleString() : "…"} cards.<br />One pack at a time.</div>
-          </div>
-        </div>
+            <div className="homestage">
+              <div className="idlehint">
+                <div className="idleglyph display">✦</div>
+                <div>{totalInDb ? totalInDb.toLocaleString() : "…"} cards.<br />One pack at a time.</div>
+              </div>
+            </div>
 
-        <div className="pullrow">
-          <div className="btns">
-            <button className="pull display" disabled={busy} onClick={buyPack}>
-              {busy ? "SHUFFLING…" : "OPEN PACK"}
-            </button>
-            <button className="pull10 display" disabled={busy} onClick={openDuel}>⚔ DUEL</button>
-            <button className="pull10 display" disabled={busy} onClick={() => setMp({ phase: "menu", code: "" })}>🌐 VS FRIEND</button>
-            <button className="pull10 display" disabled={busy} onClick={openManager}>🃏 DECKS</button>
-            <button className="pull10 display" disabled={busy} onClick={openArena}>🗡 SKIRMISH</button>
-          </div>
-          <div className="odds">
-            Hit slot — <b className="ol">Legendary 8%</b> · <b className="oe">Epic 20%</b> · <b className="or">Rare 72%</b> · <b className="ol">⚡ God pack 0.5%</b>
-          </div>
-          {(arenaRec.w + arenaRec.l + arenaRec.d) > 0 && (
-            <div className="odds">Arena record — <b className="oe">{arenaRec.w}W</b> · {arenaRec.l}L · {arenaRec.d}D</div>
-          )}
-        </div>
-
-        <div className="stats">
-          <div className="stat"><b className="display">{state.pulls}</b><span>Cards</span></div>
-          <div className="stat rar"><b className="display">{state.tiers.rare}</b><span>Rare</span></div>
-          <div className="stat epi"><b className="display">{state.tiers.epic}</b><span>Epic</span></div>
-          <div className="stat leg"><b className="display">{state.tiers.legendary}</b><span>Legendary</span></div>
-        </div>
-
-        <div className="shelf">
-          <h2 className="display">Binder <button onClick={clearAll}>Clear</button></h2>
-          <div className="progress">
-            <div className="row"><span>Unique collected</span><b>{uniqueOwned.toLocaleString()}{totalInDb ? ` / ${totalInDb.toLocaleString()}` : ""}</b></div>
-            <div className="bar"><i style={{ width: `${pct}%` }} /></div>
-          </div>
-          <div className="filters filters-scroll">
-            <button className={`fchip${fGame === "all" ? " on" : ""}`} onClick={() => setFGame("all")}>All</button>
-            {games.map((g) => (
-              <button key={g} className={`fchip${fGame === g ? " on" : ""}`} onClick={() => setFGame(g)}>{GAME_CHIP[g] || g}</button>
-            ))}
-          </div>
-          <div className="filters">
-            {[["all", "All tiers"], ...TIER_ORDER.slice().reverse().map((t) => [t, TIER_LABEL[t]])].map(([t, label]) => (
-              <button key={t} className={`fchip ft-${t}${fTier === t ? " on" : ""}`} onClick={() => setFTier(t)}>{label}</button>
-            ))}
-          </div>
-          {binderCards.length ? (
-            <div className="grid">
-              {binderCards.slice(0, 120).map((c) => (
-                <button key={key(c)} className={`thumb t-${c.tier}`} title={`${c.name} ×${c.count} · ${TIER_LABEL[c.tier]}`}
-                  aria-label={`Show ${c.name}`} onClick={() => showFromBinder(c)}>
-                  <img src={c.img} alt={c.name} loading="lazy" referrerPolicy="no-referrer" />
-                  {c.count > 1 && <span className="count-badge">×{c.count}</span>}
-                  {newIds.has(key(c)) && <span className="new-badge">NEW</span>}
+            <div className="pullrow">
+              <div className="btns">
+                <button className="pull display" disabled={busy} onClick={buyPack}>
+                  {busy ? "SHUFFLING…" : "OPEN PACK"}
                 </button>
-              ))}
+              </div>
+              <div className="odds">
+                Hit slot — <b className="ol">Legendary 8%</b> · <b className="oe">Epic 20%</b> · <b className="or">Rare 72%</b> · <b className="ol">⚡ God pack 0.5%</b>
+              </div>
             </div>
-          ) : (
-            <div className="empty">{uniqueOwned ? "No cards match these filters." : "Empty binder. Rip your first pack."}</div>
-          )}
-        </div>
 
-        {history.length > 0 && (
-          <div className="shelf">
-            <h2 className="display">Match log <button onClick={() => { if (confirm("Clear match history?")) setHistory([]); }}>Clear</button></h2>
-            <div className="mlog">
-              {history.slice(0, 20).map((m) => (
-                <details key={m.ts} className="mrow">
-                  <summary>
-                    <b className={`mres r-${m.result}`}>{m.result === "win" ? "W" : m.result === "loss" ? "L" : "D"}</b>
-                    <span className="mmode" title={m.mode === "pvp" ? "multiplayer duel" : m.mode === "skirmish" ? "skirmish" : "AI duel"}>
-                      {m.mode === "pvp" ? "🌐" : m.mode === "skirmish" ? "🗡" : "⚔"}
-                    </span>
-                    <span className="mopp">vs {m.opp || "AI"}</span>
-                    {Number.isFinite(m.turns) && <span className="mmeta">{m.turns} turns</span>}
-                    {Number.isFinite(m.myHp) && <span className="mmeta">{m.myHp}–{m.oppHp} hp</span>}
-                    <span className="mtime">
-                      {new Date(m.ts).toLocaleDateString(undefined, { month: "short", day: "numeric" })}{" "}
-                      {new Date(m.ts).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}
-                    </span>
-                  </summary>
-                  {m.log && m.log.length > 0 && (
-                    <div className="mlogbody">{m.log.map((l, i) => <div key={i}>{l}</div>)}</div>
-                  )}
-                </details>
+            <div className="stats">
+              <div className="stat"><b className="display">{state.pulls}</b><span>Cards</span></div>
+              <div className="stat rar"><b className="display">{state.tiers.rare}</b><span>Rare</span></div>
+              <div className="stat epi"><b className="display">{state.tiers.epic}</b><span>Epic</span></div>
+              <div className="stat leg"><b className="display">{state.tiers.legendary}</b><span>Legendary</span></div>
+            </div>
+
+            <footer>
+              Card effects © Simon Goellner — <a href="https://github.com/simeydotme/pokemon-cards-css" target="_blank" rel="noreferrer">simeydotme/pokemon-cards-css</a> (GPL-3.0) · <a href="https://github.com/jlgrimes/literally-every-ccg" target="_blank" rel="noreferrer">Source</a> · thanks, Simon ♥
+            </footer>
+          </>
+        )}
+
+        {tab === "cards" && (
+          <div className="shelf tabshelf">
+            <h2 className="display">Your cards <button onClick={clearAll}>Clear</button></h2>
+            <div className="progress">
+              <div className="row"><span>Unique collected</span><b>{uniqueOwned.toLocaleString()}{totalInDb ? ` / ${totalInDb.toLocaleString()}` : ""}</b></div>
+              <div className="bar"><i style={{ width: `${pct}%` }} /></div>
+            </div>
+            <div className="filters filters-scroll">
+              <button className={`fchip${fGame === "all" ? " on" : ""}`} onClick={() => setFGame("all")}>All</button>
+              {games.map((g) => (
+                <button key={g} className={`fchip${fGame === g ? " on" : ""}`} onClick={() => setFGame(g)}>{GAME_CHIP[g] || g}</button>
               ))}
             </div>
+            <div className="filters filters-scroll">
+              {[["all", "All tiers"], ...TIER_ORDER.slice().reverse().map((t) => [t, TIER_LABEL[t]])].map(([t, label]) => (
+                <button key={t} className={`fchip ft-${t}${fTier === t ? " on" : ""}`} onClick={() => setFTier(t)}>{label}</button>
+              ))}
+            </div>
+            {binderCards.length ? (
+              <div className="grid">
+                {binderCards.slice(0, 120).map((c) => (
+                  <button key={key(c)} className={`thumb t-${c.tier}`} title={`${c.name} ×${c.count} · ${TIER_LABEL[c.tier]}`}
+                    aria-label={`Show ${c.name}`} onClick={() => showFromBinder(c)}>
+                    <img src={c.img} alt={c.name} loading="lazy" referrerPolicy="no-referrer" />
+                    {c.count > 1 && <span className="count-badge">×{c.count}</span>}
+                    {newIds.has(key(c)) && <span className="new-badge">NEW</span>}
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div className="empty">{uniqueOwned ? "No cards match these filters." : "Empty binder. Rip your first pack."}</div>
+            )}
           </div>
         )}
 
-        <footer>
-          Card effects © Simon Goellner — <a href="https://github.com/simeydotme/pokemon-cards-css" target="_blank" rel="noreferrer">simeydotme/pokemon-cards-css</a> (GPL-3.0) · <a href="https://github.com/jlgrimes/literally-every-ccg" target="_blank" rel="noreferrer">Source</a> · thanks, Simon ♥
-        </footer>
+        {tab === "decks" && (
+          <div className="shelf tabshelf">
+            <h2 className="display">Your decks</h2>
+            <div className="tabnote">
+              {deckStore.decks.length
+                ? <>Tap a deck to make it active — duels and matches use the active one.</>
+                : <>No decks yet. A deck is 20 cards from your collection — duplicates up to the copies you own.</>}
+            </div>
+            <div className="deck-list">
+              {deckStore.decks.map((d) => (
+                <div key={d.id} className={`deckrow${d.id === deckStore.active ? " on" : ""}`}>
+                  <button className="deckrow-main" onClick={() => setDeckStore((s) => ({ ...s, active: d.id }))}>
+                    <span className="deckrow-dot">{d.id === deckStore.active ? "◉" : "○"}</span>
+                    <span className="deckrow-name">{d.name}</span>
+                    <span className={`deckrow-n${validDeck(d.keys, state.binder) ? "" : " bad"}`}>
+                      {d.keys.length}/20{validDeck(d.keys, state.binder) ? "" : " ⚠"}
+                    </span>
+                  </button>
+                  <button className="deckrow-btn" title="Edit" onClick={() => setEditDeck({ ...d })}>✎</button>
+                  <button className="deckrow-btn" title="Delete" onClick={() => deleteDeck(d.id)}>✕</button>
+                </div>
+              ))}
+            </div>
+            {deckStore.decks.length < 12 && (
+              <div className="btns"><button className="pull display" onClick={newDeck}>＋ NEW DECK</button></div>
+            )}
+          </div>
+        )}
+
+        {tab === "battle" && (
+          <>
+            <div className="shelf tabshelf">
+              <h2 className="display">Battle</h2>
+              <div className="tabnote">
+                OMNIRULES — Magic, Pokémon and Yu-Gi-Oh! merged into one game.
+                {activeDeck ? <> Active deck: <b>{activeDeck.name}</b>.</> : <> Build a deck in the DECKS tab first.</>}
+              </div>
+              <div className="btns battle-btns">
+                <button className="pull display" disabled={busy} onClick={openDuel}>⚔ DUEL THE AI</button>
+                <button className="pull10 display" disabled={busy} onClick={() => setMp({ phase: "menu", code: "" })}>🌐 VS FRIEND</button>
+                <button className="pull10 display" disabled={busy} onClick={openArena}>🗡 QUICK SKIRMISH</button>
+              </div>
+              {(arenaRec.w + arenaRec.l + arenaRec.d) > 0 && (
+                <div className="odds">Record — <b className="oe">{arenaRec.w}W</b> · {arenaRec.l}L · {arenaRec.d}D</div>
+              )}
+            </div>
+
+            {history.length > 0 && (
+              <div className="shelf">
+                <h2 className="display">Match log <button onClick={() => { if (confirm("Clear match history?")) setHistory([]); }}>Clear</button></h2>
+                <div className="mlog">
+                  {history.slice(0, 20).map((m) => (
+                    <details key={m.ts} className="mrow">
+                      <summary>
+                        <b className={`mres r-${m.result}`}>{m.result === "win" ? "W" : m.result === "loss" ? "L" : "D"}</b>
+                        <span className="mmode" title={m.mode === "pvp" ? "multiplayer duel" : m.mode === "skirmish" ? "skirmish" : "AI duel"}>
+                          {m.mode === "pvp" ? "🌐" : m.mode === "skirmish" ? "🗡" : "⚔"}
+                        </span>
+                        <span className="mopp">vs {m.opp || "AI"}</span>
+                        {Number.isFinite(m.turns) && <span className="mmeta">{m.turns} turns</span>}
+                        {Number.isFinite(m.myHp) && <span className="mmeta">{m.myHp}–{m.oppHp} hp</span>}
+                        <span className="mtime">
+                          {new Date(m.ts).toLocaleDateString(undefined, { month: "short", day: "numeric" })}{" "}
+                          {new Date(m.ts).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}
+                        </span>
+                      </summary>
+                      {m.log && m.log.length > 0 && (
+                        <div className="mlogbody">{m.log.map((l, i) => <div key={i}>{l}</div>)}</div>
+                      )}
+                    </details>
+                  ))}
+                </div>
+              </div>
+            )}
+          </>
+        )}
       </div>
+
+      {/* ---------- bottom tab bar ---------- */}
+      <nav className="tabbar">
+        {[["home", "🎁", "PACKS"], ["cards", "🗂", "CARDS"], ["decks", "🃏", "DECKS"], ["battle", "⚔️", "BATTLE"]].map(([t, icon, label]) => (
+          <button key={t} className={`tabbtn${tab === t ? " on" : ""}`} onClick={() => goTab(t)}>
+            <span className="ticon">{icon}</span>
+            <span>{label}</span>
+          </button>
+        ))}
+      </nav>
 
       {/* ---------- fullscreen pack experience ---------- */}
       {screen && (
@@ -776,38 +836,6 @@ export default function Home() {
               </div>
             </>
           )}
-        </div>
-      )}
-
-      {/* ---------- deck manager ---------- */}
-      {mgr && !duel && !editDeck && (
-        <div className="packscreen arenascreen">
-          <div className="ps-portal" />
-          <div className="ps-title display">Your decks</div>
-          <div className="arena-sub">
-            {deckStore.decks.length
-              ? <>Tap a deck to make it active — ⚔ DUEL and 🌐 VS FRIEND use the active one.</>
-              : <>No decks yet. Build your first from the cards you've pulled.</>}
-          </div>
-          <div className="deck-list">
-            {deckStore.decks.map((d) => (
-              <div key={d.id} className={`deckrow${d.id === deckStore.active ? " on" : ""}`}>
-                <button className="deckrow-main" onClick={() => setDeckStore((s) => ({ ...s, active: d.id }))}>
-                  <span className="deckrow-dot">{d.id === deckStore.active ? "◉" : "○"}</span>
-                  <span className="deckrow-name">{d.name}</span>
-                  <span className={`deckrow-n${validDeck(d.keys, state.binder) ? "" : " bad"}`}>
-                    {d.keys.length}/20{validDeck(d.keys, state.binder) ? "" : " ⚠"}
-                  </span>
-                </button>
-                <button className="deckrow-btn" title="Edit" onClick={() => setEditDeck({ ...d })}>✎</button>
-                <button className="deckrow-btn" title="Delete" onClick={() => deleteDeck(d.id)}>✕</button>
-              </div>
-            ))}
-          </div>
-          <div className="arena-actions">
-            {deckStore.decks.length < 12 && <button className="pull display" onClick={newDeck}>＋ NEW DECK</button>}
-            <button className="pull10 display" onClick={() => setMgr(false)}>DONE</button>
-          </div>
         </div>
       )}
 
