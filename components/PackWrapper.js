@@ -2,7 +2,8 @@
 import { useRef, useState, useCallback } from "react";
 
 // Swipe horizontally across the pack to tear the strip off, Pocket-style.
-export default function PackWrapper({ onTorn, universeLabel }) {
+// god: the golden 1-in-200 wrapper — you know before you tear.
+export default function PackWrapper({ onTorn, universeLabel, god = false }) {
   const ref = useRef(null);
   const drag = useRef({ on: false, x0: 0 });
   const [prog, setProg] = useState(0);
@@ -34,7 +35,7 @@ export default function PackWrapper({ onTorn, universeLabel }) {
   }, [torn, onTorn]);
 
   return (
-    <div className={`pack${torn ? " torn" : ""}`} ref={ref}
+    <div className={`pack${god ? " god" : ""}${torn ? " torn" : ""}`} ref={ref}
       onPointerDown={down} onPointerMove={move} onPointerUp={finish} onPointerCancel={finish}>
       <div className="pack-strip" style={{ transform: `translateX(${prog * 110}%) rotate(${prog * 8}deg)`, transition: drag.current.on ? "none" : undefined }}>
         <span className="tear-arrows">››››››››››</span>
