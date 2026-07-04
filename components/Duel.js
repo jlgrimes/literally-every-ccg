@@ -25,6 +25,7 @@ export default function Duel({
   const [atkSel, setAtkSel] = useState([]);      // my board indexes declared for the attack
   const [blkSel, setBlkSel] = useState(null);    // my blocker awaiting an attacker to block
   const [blocks, setBlocks] = useState({});      // attackerIdx -> my blocker idx
+  const [aiPlan, setAiPlan] = useState(null);    // AI-mode: the AI's revealed block assignment
   // pending: { hand, need, picked:[] } tribute mode | { hand, evolve:true } evolution targeting
   const [pending, setPending] = useState(null);
   const [hint, setHint] = useState("Play cards, then attack. Mana fuels Magic, energy powers Pokémon, tributes summon big Yu-Gi-Oh monsters.");
@@ -37,7 +38,7 @@ export default function Duel({
     if (!external.state.over && !stRef.current.over && stRef.current.active === my && external.state.active === my) return;
     appliedSeq.current = external.seq;
     stRef.current = external.state;
-    setAtkSel([]); setBlkSel(null); setBlocks({}); setPending(null);
+    setAtkSel([]); setBlkSel(null); setBlocks({}); setPending(null); setAiPlan(null);
     force();
   }, [external, my]);
 
@@ -189,11 +190,23 @@ export default function Duel({
     else passTurn(st);
     setAtkSel([]);
     if (mode === "ai") {
-      // AI blocks instantly, then plays its turn — possibly attacking back,
-      // which leaves the block phase open for me
-      if (st.phase === "block" && st.active === my) resolveCombat(st, aiBlocks(st));
+      if (st.phase === "block" && st.active === my) {
+        // reveal the AI's blocks as an explicit combat step
+        setAiPlan(aiBlocks(st));
+        refresh();
+        return;
+      }
       if (!st.over && st.active === "ai") runAiTurn(st);
     } else sync();
+    refresh();
+  }
+
+  // AI mode: player confirms combat after seeing the AI's blockers
+  function onResolveAiCombat() {
+    if (!aiPlan) return;
+    resolveCombat(st, aiPlan);
+    setAiPlan(null);
+    if (mode === "ai" && !st.over && st.active === "ai") runAiTurn(st);
     refresh();
   }
 
@@ -208,6 +221,10 @@ export default function Duel({
   const attackerSet = blocking && st.combat ? new Set(st.combat.attackers) : new Set();
   const blockedBy = {};
   for (const [a, b] of Object.entries(blocks)) blockedBy[b] = +a;
+  // AI-mode reveal: which of the AI's creatures are blocking, and which of
+  // my attackers got blocked
+  const foeBlockers = aiPlan ? new Set(Object.values(aiPlan)) : null;
+  const myBlockedAtk = aiPlan ? new Set(Object.keys(aiPlan).map(Number)) : null;
 
   const Board = ({ side, ownSide }) => (
     <div className={`drow${ownSide ? " mineboard" : ""}`}>
@@ -217,6 +234,7 @@ export default function Duel({
         // during blocks: enemy attackers glow; my picked blocker is outlined
         const isAtk = !ownSide && iDefend && attackerSet.has(x);
         const myAtk = ownSide && (iWait && attackerSet.has(x) || (myTurn && atkSel.includes(x)));
+        const foeIsBlocking = !ownSide && foeBlockers && foeBlockers.has(x);
         const cls = [
           "dcard", `t-${b.card.tier}`,
           myAtk ? "sel" : "",
@@ -225,6 +243,7 @@ export default function Duel({
           ownSide && pending && pending.picked && pending.picked.includes(x) ? "trib" : "",
           ready ? "ready" : "",
           isAtk ? "attacking" : "",
+          foeIsBlocking ? "blocking" : "",
           !ownSide && pending && pending.spell && !pending.own ? "targetable" : "",
           ownSide && pending && pending.spell && pending.own ? "targetable" : "",
         ].filter(Boolean).join(" ");
@@ -235,8 +254,8 @@ export default function Duel({
             <img src={b.card.img} alt={b.card.name} referrerPolicy="no-referrer" />
             <span className="dstat datk">{b.card.bs[0]}⚔</span>
             <span className={`dstat dhpv${b.curHp < b.card.bs[1] ? " hurt" : ""}`}>{b.curHp}♥</span>
-            {(myAtk || isAtk) && <span className="dtag datkmark">⚔</span>}
-            {ownSide && blockedBy[x] !== undefined && <span className="dtag">🛡</span>}
+            {(myAtk || isAtk) && <span className="dtag datkmark">⚔{myAtk && myBlockedAtk && myBlockedAtk.has(x) ? "🛡" : ""}</span>}
+            {(ownSide && blockedBy[x] !== undefined || foeIsBlocking) && <span className="dtag">🛡</span>}
             {b.sick && !myAtk && <span className="dtag">💤</span>}
             {need > 0 && <span className={`dtag den${b.energy >= need ? " full" : ""}`}>⚡{b.energy}/{need}</span>}
           </button>
@@ -255,7 +274,11 @@ export default function Duel({
 
       <div className="duel-log">
         {!st.over && (iDefend || iWait) && (
-          <div className={`turn-tag${iDefend ? " yours" : ""}`}>{iDefend ? "🛡 BLOCK! Assign blockers, then resolve" : `⏳ ${themLabel} is choosing blockers…`}</div>
+          <div className={`turn-tag${iDefend ? " yours" : ""}`}>
+            {iDefend ? "🛡 BLOCK! Assign blockers, then resolve"
+              : aiPlan ? `🛡 ${themLabel} blocks with ${Object.keys(aiPlan).length ? Object.values(aiPlan).map((b) => foe.board[b] && foe.board[b].card.name).filter(Boolean).join(", ") : "nothing"} — resolve!`
+              : `⏳ ${themLabel} is choosing blockers…`}
+          </div>
         )}
         {mode === "pvp" && !st.over && !blocking && (
           <div className={`turn-tag${myTurn ? " yours" : ""}`}>{myTurn ? "▶ your turn" : `⏳ ${themLabel}'s turn…`}</div>
@@ -322,6 +345,8 @@ export default function Duel({
           <button className="pull display" onClick={onResolveBlocks}>
             RESOLVE ({Object.keys(blocks).length} block{Object.keys(blocks).length === 1 ? "" : "s"})
           </button>
+        ) : aiPlan ? (
+          <button className="pull display" onClick={onResolveAiCombat}>💥 RESOLVE COMBAT</button>
         ) : (
           <button className="pull display" disabled={st.over || !myTurn} onClick={onEnd}>
             {atkSel.length ? `⚔ ATTACK (${atkSel.length})` : "END TURN"}
