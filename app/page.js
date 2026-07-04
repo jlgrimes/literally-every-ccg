@@ -743,7 +743,7 @@ export default function Home() {
       )}
 
       {/* ---------- multiplayer menu / waiting room ---------- */}
-      {mp && !duel && !builder && (
+      {mp && !duel && !editDeck && (
         <div className="packscreen arenascreen">
           <div className="ps-portal" />
           {mp.phase === "menu" && (
