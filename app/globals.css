@@ -398,6 +398,18 @@ footer a:hover{color:var(--text)}
 .pack-logo{font-weight:800;font-size:19px;line-height:1.25;letter-spacing:.18em;text-indent:.18em;text-align:center;color:var(--text)}
 .pack-logo em{font-style:normal;font-size:34px;color:var(--gold)}
 .pack-sub{font-size:10px;letter-spacing:.3em;text-indent:.3em;color:var(--muted);text-transform:uppercase}
+/* the golden 1-in-200 wrapper */
+.pack.god{filter:drop-shadow(0 0 34px rgba(255,194,77,.75))}
+.pack.god .pack-body{
+  background:
+    radial-gradient(140% 90% at 50% 0%,rgba(255,255,255,.22),transparent 55%),
+    linear-gradient(160deg,#4a3608 0%,#8a6a14 35%,#3a2c06 70%,#6b520f 100%);
+}
+.pack.god .pack-strip{background:linear-gradient(120deg,#8a6a14,#d4a72c 40%,#8a6a14 70%);border-bottom-color:#fff}
+.pack.god .pack-logo,.pack.god .pack-logo em{color:#fff}
+.pack.god .pack-sub{color:#ffe9b0;letter-spacing:.34em}
+.pack.god .pack-sheen{animation-duration:1.4s}
+
 .pack.torn .pack-body{transform:translateY(26px) scale(.96);opacity:0}
 .pack.torn .pack-strip{transform:translateX(130%) rotate(14deg) !important;opacity:0}
 .pack-a11y{

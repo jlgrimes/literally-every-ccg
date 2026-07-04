@@ -17,6 +17,8 @@ levels (a Lv.7 mega is a legendary, an egg is a common).
 
 - Swipe-to-tear pack opening with a tap-through card stack
 - Unified 6/3/1 booster structure (hit slot: Legendary 8% / Epic 20% / Rare 72%)
+- God packs: 1 in 200 packs arrives in a golden wrapper — all ten cards are
+  epics and legendaries, rolled server-side like everything else
 - Interactive holographic card effects — tilt, glare, rainbow and gold foils
 - Persistent binder with counts, per-game and per-tier filters, and completion tracking
 - Broken card images are detected and replaced server-side before they count

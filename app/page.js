@@ -126,7 +126,7 @@ export default function Home() {
       const validated = (await Promise.all(j.pack.map(validateOrReplace))).filter(Boolean);
       if (!validated.length) throw new Error("no valid cards");
       record(validated); // only cards that actually render count
-      setScreen({ phase: "wrapper", cards: validated, idx: 0 });
+      setScreen({ phase: "wrapper", cards: validated, idx: 0, god: !!j.god });
     } catch (e) {
       toast("Pack machine jammed — try again");
     } finally { setBusy(false); }
@@ -134,7 +134,7 @@ export default function Home() {
 
   function onTorn() {
     setScreen((s) => s && { ...s, phase: "stack" });
-    if (screen) celebrate(screen.cards[0].tier);
+    if (screen) celebrate(screen.god ? "legendary" : screen.cards[0].tier);
   }
 
   function advance() {
@@ -193,7 +193,7 @@ export default function Home() {
             {busy ? "SHUFFLING…" : "OPEN PACK"}
           </button>
           <div className="odds">
-            Hit slot — <b className="ol">Legendary 8%</b> · <b className="oe">Epic 20%</b> · <b className="or">Rare 72%</b>
+            Hit slot — <b className="ol">Legendary 8%</b> · <b className="oe">Epic 20%</b> · <b className="or">Rare 72%</b> · <b className="ol">⚡ God pack 0.5%</b>
           </div>
         </div>
 
@@ -249,7 +249,7 @@ export default function Home() {
           <div className="ps-portal" />
 
           {screen.phase === "wrapper" && (
-            <PackWrapper onTorn={onTorn} universeLabel="Multiverse" />
+            <PackWrapper onTorn={onTorn} universeLabel={screen.god ? "GOD PACK" : "Multiverse"} god={screen.god} />
           )}
 
           {screen.phase === "stack" && (
@@ -269,7 +269,7 @@ export default function Home() {
 
           {screen.phase === "summary" && (
             <>
-              <div className="ps-title display">Pack complete</div>
+              <div className="ps-title display">{screen.god ? "⚡ GOD PACK ⚡" : "Pack complete"}</div>
               <div className="fan ps-fan">
                 {screen.cards.map((c, i) => (
                   <div key={i} className={`mini t-${c.tier}`} style={{ animationDelay: `${i * 70}ms` }}>
