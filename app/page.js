@@ -54,9 +54,13 @@ export default function Home() {
 
   // duel: null | { mode:"ai", playerDeck, aiDeck } | { mode:"pvp", side, state, ext }
   const [duel, setDuel] = useState(null);
-  const [deckKeys, setDeckKeys] = useState(null); // saved 20-card deck (binder keys)
-  const [builder, setBuilder] = useState(false);
+  // multiple saved decks: { decks: [{id, name, keys}], active: id }
+  const [deckStore, setDeckStore] = useState({ decks: [], active: null });
+  const [mgr, setMgr] = useState(false);          // deck manager overlay
+  const [editDeck, setEditDeck] = useState(null); // deck being edited in the builder
   const duelAfterSave = useRef(false);
+  const activeDeck = deckStore.decks.find((d) => d.id === deckStore.active) || null;
+  const deckKeys = activeDeck ? activeDeck.keys : null;
 
   // match log: newest-first records of finished matches
   const [history, setHistory] = useState([]);
@@ -83,8 +87,13 @@ export default function Home() {
       if (ar) setArenaRec({ ...EMPTY_RECORD, ...JSON.parse(ar) });
     } catch (e) {}
     try {
-      const dk = JSON.parse(localStorage.getItem("omnideck:deck") || "null");
-      if (Array.isArray(dk)) setDeckKeys(dk);
+      const ds = JSON.parse(localStorage.getItem("omnideck:decks") || "null");
+      if (ds && Array.isArray(ds.decks)) setDeckStore(ds);
+      else {
+        // migrate the single-deck era
+        const dk = JSON.parse(localStorage.getItem("omnideck:deck") || "null");
+        if (Array.isArray(dk)) setDeckStore({ decks: [{ id: "d1", name: "Deck 1", keys: dk }], active: "d1" });
+      }
     } catch (e) {}
     try { setPname(localStorage.getItem("omnideck:name") || ""); } catch (e) {}
     try {
@@ -103,9 +112,9 @@ export default function Home() {
     try { localStorage.setItem("omnideck:arena", JSON.stringify(arenaRec)); } catch (e) {}
   }, [arenaRec]);
   useEffect(() => {
-    if (!loaded.current || !deckKeys) return;
-    try { localStorage.setItem("omnideck:deck", JSON.stringify(deckKeys)); } catch (e) {}
-  }, [deckKeys]);
+    if (!loaded.current) return;
+    try { localStorage.setItem("omnideck:decks", JSON.stringify(deckStore)); } catch (e) {}
+  }, [deckStore]);
   useEffect(() => {
     if (!loaded.current) return;
     try { localStorage.setItem("omnideck:history", JSON.stringify(history)); } catch (e) {}
@@ -113,9 +122,9 @@ export default function Home() {
 
   // lock page scroll while the pack screen is open
   useEffect(() => {
-    document.body.style.overflow = screen || inspect || arena || duel || builder || mp ? "hidden" : "";
+    document.body.style.overflow = screen || inspect || arena || duel || editDeck || mgr || mp ? "hidden" : "";
     return () => { document.body.style.overflow = ""; };
-  }, [screen, inspect, arena, duel, builder, mp]);
+  }, [screen, inspect, arena, duel, editDeck, mgr, mp]);
 
   // multiplayer polling: waiting room → opponent joined; in-game → their moves
   useEffect(() => {
@@ -300,21 +309,43 @@ export default function Home() {
       if (validDeck(deckKeys, binder)) { await startDuel(deckKeys, binder); return; }
       const owned = Object.values(binder).filter((c) => Array.isArray(c.bs) || Array.isArray(c.fx)).reduce((n, c) => n + (c.count || 1), 0);
       if (owned < 20) toast(`You need 20 duel-legal cards for a deck — you own ${owned}. Rip more packs!`);
-      else { duelAfterSave.current = true; setBuilder(true); }
+      else {
+        duelAfterSave.current = true;
+        setEditDeck(activeDeck ? { ...activeDeck } : { id: null, name: "Deck 1", keys: [] });
+      }
     } finally { setBusy(false); }
   }
 
-  async function openBuilder() {
+  async function openManager() {
     duelAfterSave.current = false;
     await healFighters();
-    setBuilder(true);
+    setMgr(true);
   }
 
-  function saveDeck(keys) {
-    setDeckKeys(keys);
-    setBuilder(false);
+  function newDeck() {
+    setEditDeck({ id: null, name: `Deck ${deckStore.decks.length + 1}`, keys: [] });
+  }
+
+  function deleteDeck(id) {
+    if (!confirm("Delete this deck?")) return;
+    setDeckStore((s) => {
+      const decks = s.decks.filter((d) => d.id !== id);
+      return { decks, active: s.active === id ? (decks[0] ? decks[0].id : null) : s.active };
+    });
+  }
+
+  function saveDeck(keys, name) {
+    let id = editDeck && editDeck.id;
+    setDeckStore((s) => {
+      let decks = [...s.decks];
+      if (!id) { id = "d" + Date.now().toString(36); decks.push({ id, name, keys }); }
+      else decks = decks.map((d) => (d.id === id ? { ...d, name, keys } : d));
+      return { decks: decks.slice(0, 12), active: id };
+    });
+    setEditDeck(null);
     if (duelAfterSave.current) {
       duelAfterSave.current = false;
+      setMgr(false);
       startDuel(keys, state.binder);
     } else toast("Deck saved");
   }
@@ -510,7 +541,7 @@ export default function Home() {
             </button>
             <button className="pull10 display" disabled={busy} onClick={openDuel}>⚔ DUEL</button>
             <button className="pull10 display" disabled={busy} onClick={() => setMp({ phase: "menu", code: "" })}>🌐 VS FRIEND</button>
-            <button className="pull10 display" disabled={busy} onClick={openBuilder}>🃏 DECK</button>
+            <button className="pull10 display" disabled={busy} onClick={openManager}>🃏 DECKS</button>
             <button className="pull10 display" disabled={busy} onClick={openArena}>🗡 SKIRMISH</button>
           </div>
           <div className="odds">
@@ -746,10 +777,42 @@ export default function Home() {
         </div>
       )}
 
+      {/* ---------- deck manager ---------- */}
+      {mgr && !duel && !editDeck && (
+        <div className="packscreen arenascreen">
+          <div className="ps-portal" />
+          <div className="ps-title display">Your decks</div>
+          <div className="arena-sub">
+            {deckStore.decks.length
+              ? <>Tap a deck to make it active — ⚔ DUEL and 🌐 VS FRIEND use the active one.</>
+              : <>No decks yet. Build your first from the cards you've pulled.</>}
+          </div>
+          <div className="deck-list">
+            {deckStore.decks.map((d) => (
+              <div key={d.id} className={`deckrow${d.id === deckStore.active ? " on" : ""}`}>
+                <button className="deckrow-main" onClick={() => setDeckStore((s) => ({ ...s, active: d.id }))}>
+                  <span className="deckrow-dot">{d.id === deckStore.active ? "◉" : "○"}</span>
+                  <span className="deckrow-name">{d.name}</span>
+                  <span className={`deckrow-n${validDeck(d.keys, state.binder) ? "" : " bad"}`}>
+                    {d.keys.length}/20{validDeck(d.keys, state.binder) ? "" : " ⚠"}
+                  </span>
+                </button>
+                <button className="deckrow-btn" title="Edit" onClick={() => setEditDeck({ ...d })}>✎</button>
+                <button className="deckrow-btn" title="Delete" onClick={() => deleteDeck(d.id)}>✕</button>
+              </div>
+            ))}
+          </div>
+          <div className="arena-actions">
+            {deckStore.decks.length < 12 && <button className="pull display" onClick={newDeck}>＋ NEW DECK</button>}
+            <button className="pull10 display" onClick={() => setMgr(false)}>DONE</button>
+          </div>
+        </div>
+      )}
+
       {/* ---------- deck builder ---------- */}
-      {builder && !duel && (
-        <DeckBuilder pool={eligibleBinder} initial={deckKeys} onSave={saveDeck}
-          onClose={() => { duelAfterSave.current = false; setBuilder(false); }} />
+      {editDeck && !duel && (
+        <DeckBuilder pool={eligibleBinder} initial={editDeck.keys} deckName={editDeck.name} onSave={saveDeck}
+          onClose={() => { duelAfterSave.current = false; setEditDeck(null); }} />
       )}
 
       {/* ---------- merged-rules duel ---------- */}

@@ -26,8 +26,9 @@ with unified rarity tiers.
   nuke, and deck-search tutors) with magnitudes read from their real rules
   text — Lightning Bolt burns, Professor Oak draws, Raigeki wipes the board,
   Demonic Tutor searches your deck
-- Deck building, required: construct your 20-card duel deck from cards you
-  actually pulled — duplicates allowed up to the copies you own
+- Deck building, required: save up to 12 named decks built from cards you
+  actually pulled (duplicates up to the copies you own) and switch the
+  active one any time
 - Multiplayer: create a match, send the 6-letter code to a friend, and duel
   each other's real decks under the merged rules — turn-based with live sync
 - Quick skirmishes: 3-lane stat fights with real P/T, HP/attack and ATK/DEF

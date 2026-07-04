@@ -30,6 +30,9 @@ export default function Duel({
   const aiTimer = useRef(null);
   const rootRef = useRef(null);
   const svgRef = useRef(null);
+  const [pops, setPops] = useState([]); // floating damage/heal numbers
+  const prevHp = useRef(null);          // uid -> curHp, plus face HP per side
+  const popId = useRef(0);
   // pending: { hand, need, picked:[] } tribute mode | { hand, evolve:true } evolution targeting
   const [pending, setPending] = useState(null);
   const [hint, setHint] = useState("Play cards, then attack. Mana fuels Magic, energy powers Pokémon, tributes summon big Yu-Gi-Oh monsters.");
@@ -243,6 +246,42 @@ export default function Duel({
     refresh();
   }
 
+  // ---- floating damage/heal numbers: diff HP between renders ----
+  useEffect(() => {
+    const root = rootRef.current;
+    const cur = { "face-my": mine.hp, "face-foe": foe.hp };
+    for (const [side, tag] of [[mine, "m"], [foe, "f"]]) {
+      side.board.forEach((b, x) => { cur[b.uid] = b.curHp; cur[`${b.uid}:at`] = `[data-bid="${tag}${x}"]`; });
+    }
+    const prev = prevHp.current;
+    prevHp.current = cur;
+    if (!prev || !root) return;
+    const born = [];
+    const spawn = (sel, delta) => {
+      const el = root.querySelector(sel);
+      if (!el) return;
+      const r = el.getBoundingClientRect();
+      born.push({
+        id: ++popId.current,
+        x: r.left + r.width / 2 + (Math.random() * 16 - 8),
+        y: r.top + r.height * 0.3,
+        text: delta > 0 ? `+${delta}` : `${delta}`,
+        cls: delta > 0 ? "up" : "down",
+      });
+    };
+    for (const key of Object.keys(cur)) {
+      if (key.endsWith(":at") || !(key in prev)) continue;
+      const d = cur[key] - prev[key];
+      if (!d) continue;
+      spawn(key === "face-my" ? ".dhp.mine" : key === "face-foe" ? ".dhp.foe" : cur[`${key}:at`], d);
+    }
+    if (born.length) {
+      setPops((p) => [...p, ...born]);
+      const ids = born.map((b) => b.id);
+      setTimeout(() => setPops((p) => p.filter((q) => !ids.includes(q.id))), 950);
+    }
+  });
+
   // ---- attack/block arrows, drawn from live card positions ----
   useEffect(() => {
     const root = rootRef.current, svg = svgRef.current;
@@ -312,7 +351,7 @@ export default function Duel({
           ownSide && pending && pending.spell && pending.own ? "targetable" : "",
         ].filter(Boolean).join(" ");
         return (
-          <button key={`${b.card.game}:${b.card.id}:${x}`} className={cls} data-bid={(ownSide ? "m" : "f") + x}
+          <button key={b.uid || `${b.card.game}:${b.card.id}:${x}`} className={cls} data-bid={(ownSide ? "m" : "f") + x}
             onClick={() => (ownSide ? clickMine(x) : clickFoe(x))}
             title={`${b.card.name} · ${GAME_TAG[b.card.game]}`}>
             <img src={b.card.img} alt={b.card.name} referrerPolicy="no-referrer" />
@@ -332,6 +371,11 @@ export default function Duel({
   return (
     <div className="packscreen duelscreen" ref={rootRef}>
       <svg className="duel-arrows" ref={svgRef} />
+      <div className="duel-pops">
+        {pops.map((p) => (
+          <span key={p.id} className={`dpop ${p.cls}`} style={{ left: p.x, top: p.y }}>{p.text}</span>
+        ))}
+      </div>
       <button className={`dhp foe${pending && pending.spell && !pending.own ? " targetable" : ""}`} onClick={() => clickFoe("face")}>
         <b>{themLabel}</b> ♥ {Math.max(0, foe.hp)} <span className="dsub">· hand {foe.hand.length} · deck {foe.deck.length}</span>
       </button>

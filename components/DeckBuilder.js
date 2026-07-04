@@ -7,10 +7,11 @@ const TIER_ORDER = ["common", "uncommon", "rare", "epic", "legendary"];
 const rank = (t) => TIER_ORDER.indexOf(t);
 const key = (c) => `${c.game}:${c.id}`;
 
-// pool: binder cards with bs (carry .count). initial: saved deck keys.
-export default function DeckBuilder({ pool, initial, onSave, onClose }) {
+// pool: duel-legal binder cards (carry .count). initial: saved deck keys.
+export default function DeckBuilder({ pool, initial, deckName, onSave, onClose }) {
   const byKey = useMemo(() => new Map(pool.map((c) => [key(c), c])), [pool]);
   const [deck, setDeck] = useState(() => (initial || []).filter((k) => byKey.has(k)));
+  const [name, setName] = useState(deckName || "My deck");
 
   const inDeck = {};
   for (const k of deck) inDeck[k] = (inDeck[k] || 0) + 1;
@@ -36,6 +37,8 @@ export default function DeckBuilder({ pool, initial, onSave, onClose }) {
     <div className="packscreen arenascreen">
       <div className="ps-portal" />
       <div className="ps-title display">Build your deck</div>
+      <input className="mp-input deck-name-input" maxLength={18} placeholder="deck name"
+        value={name} onChange={(e) => setName(e.target.value)} />
       <div className="arena-sub">
         {owned < DECK_SIZE
           ? <>You own {owned} fighter{owned === 1 ? "" : "s"} — you need {DECK_SIZE} to duel. Rip more packs! (Magic creatures, Pokémon &amp; Yu-Gi-Oh monsters count; duplicates too.)</>
@@ -79,7 +82,7 @@ export default function DeckBuilder({ pool, initial, onSave, onClose }) {
       </div>
 
       <div className="arena-actions">
-        <button className="pull display" disabled={deck.length !== DECK_SIZE} onClick={() => onSave(deck)}>
+        <button className="pull display" disabled={deck.length !== DECK_SIZE} onClick={() => onSave(deck, name.trim() || "My deck")}>
           SAVE DECK {deck.length}/{DECK_SIZE}
         </button>
         <button className="pull10 display" onClick={onClose}>CANCEL</button>

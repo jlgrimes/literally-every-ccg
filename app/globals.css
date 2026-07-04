@@ -546,6 +546,29 @@ footer a:hover{color:var(--text)}
 .dcard.targetable{cursor:crosshair;box-shadow:0 0 10px rgba(255,93,108,.5)}
 .dcard.attacking{outline:3px solid #ff5d6c;outline-offset:-1px;box-shadow:0 0 16px rgba(255,93,108,.6);cursor:crosshair}
 .dcard.blocking{outline:3px solid var(--t-uncommon);outline-offset:-1px;box-shadow:0 0 14px rgba(79,197,138,.55)}
+/* cards dropping onto the board */
+.drow .dcard{animation:carddrop .35s cubic-bezier(.2,.8,.3,1.15)}
+@keyframes carddrop{from{opacity:0;transform:translateY(-16px) scale(.75)}to{opacity:1;transform:none}}
+
+/* floating damage/heal numbers */
+.duel-pops{position:fixed;inset:0;pointer-events:none;z-index:118}
+.dpop{
+  position:fixed;transform:translate(-50%,0);
+  font-family:var(--font-display),sans-serif;font-weight:800;font-size:20px;
+  text-shadow:0 2px 6px rgba(0,0,0,.8);animation:popfloat .95s ease-out forwards;
+}
+.dpop.down{color:#ff5d6c}
+.dpop.up{color:var(--t-uncommon)}
+@keyframes popfloat{
+  0%{opacity:0;transform:translate(-50%,6px) scale(.6)}
+  18%{opacity:1;transform:translate(-50%,-4px) scale(1.15)}
+  100%{opacity:0;transform:translate(-50%,-34px) scale(1)}
+}
+@media (prefers-reduced-motion:reduce){
+  .drow .dcard{animation:none}
+  .dpop{animation:none;opacity:0}
+}
+
 .duel-arrows{position:fixed;inset:0;width:100vw;height:100vh;pointer-events:none;z-index:6}
 .duel-arrows path{fill:none}
 .duel-arrows .ar-atk{stroke:#ff5d6c;stroke-width:2.5;opacity:.9;filter:drop-shadow(0 0 5px rgba(255,93,108,.55))}
@@ -646,6 +669,28 @@ footer a:hover{color:var(--text)}
   display:grid;grid-template-columns:repeat(auto-fill,minmax(60px,1fr));gap:6px;
   overflow-y:auto;padding:2px;
 }
+
+/* ---------- deck manager ---------- */
+.deck-list{z-index:2;display:flex;flex-direction:column;gap:6px;width:100%;max-width:420px}
+.deckrow{
+  display:flex;align-items:stretch;gap:6px;border:1px solid var(--line);border-radius:10px;
+  background:var(--panel);padding:4px;
+}
+.deckrow.on{border-color:var(--gold);box-shadow:0 0 12px rgba(255,194,77,.2)}
+.deckrow-main{
+  flex:1;display:flex;align-items:center;gap:10px;background:none;border:none;color:var(--text);
+  font-family:inherit;font-size:13px;padding:8px 10px;cursor:pointer;min-width:0;
+}
+.deckrow-dot{color:var(--gold);flex:0 0 auto}
+.deckrow-name{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.deckrow-n{margin-left:auto;color:var(--muted);font-size:11px;flex:0 0 auto}
+.deckrow-n.bad{color:#ff5d6c}
+.deckrow-btn{
+  width:36px;border:1px solid var(--line);border-radius:8px;background:none;color:var(--muted);
+  font-size:13px;cursor:pointer;
+}
+.deckrow-btn:hover{color:var(--text);border-color:#3a4460}
+.deck-name-input{max-width:220px;padding:8px 12px;font-size:13px}
 
 /* ---------- deck builder ---------- */
 .deck-strip{
