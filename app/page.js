@@ -9,12 +9,13 @@ const GAME_LABEL = {
   mtg: "Magic: The Gathering", pokemon: "Pokémon TCG", yugioh: "Yu-Gi-Oh!", lorcana: "Disney Lorcana",
   onepiece: "One Piece", gundam: "Gundam", dbfusion: "Dragon Ball Fusion World",
   unionarena: "Union Arena", swu: "Star Wars Unlimited", fab: "Flesh and Blood",
-  riftbound: "Riftbound: League of Legends",
+  riftbound: "Riftbound: League of Legends", digimon: "Digimon Card Game",
+  netrunner: "Android: Netrunner", weiss: "Weiß Schwarz",
 };
 const GAME_CHIP = {
   mtg: "Magic", pokemon: "Pokémon", yugioh: "Yu-Gi-Oh!", lorcana: "Lorcana", onepiece: "One Piece",
   gundam: "Gundam", dbfusion: "DB Fusion", unionarena: "Union Arena", swu: "SW Unlimited", fab: "Flesh & Blood",
-  riftbound: "Riftbound",
+  riftbound: "Riftbound", digimon: "Digimon", netrunner: "Netrunner", weiss: "Weiß Schwarz",
 };
 const rank = (t) => TIER_ORDER.indexOf(t);
 const key = (c) => `${c.game}:${c.id}`;

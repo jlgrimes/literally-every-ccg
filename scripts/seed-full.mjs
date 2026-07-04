@@ -108,6 +108,13 @@ function mapRarity(game, raw) {
     if (/uncommon/.test(r)) return "uncommon";
     return "common";
   }
+  if (game === "weiss") {
+    if (/^(sp|ssp|sec|sgr|rrr|rr\+|xr)$/.test(r)) return "legendary";
+    if (/^(rr|sr)$/.test(r)) return "epic";
+    if (/^(r|cr|ps)$/.test(r)) return "rare";
+    if (/^(u|pr)$/.test(r)) return "uncommon";
+    return "common";
+  }
   if (game === "lorcana") {
     if (/enchanted|legendary/.test(r)) return "legendary";
     if (/super/.test(r)) return "epic";
@@ -250,15 +257,67 @@ async function seedRiftbound() {
   console.log("riftbound done:", count("riftbound"));
 }
 
-// ---------- DIGIMON: digimoncard.io (has rarity) ----------
+// ---------- DIGIMON: apitcg dump (no rarity — tier from Digimon level) ----------
+export function digimonTier(c) {
+  const lv = parseInt(String(c.level || "").replace(/\D/g, ""), 10) || 0;
+  if (lv >= 7) return "legendary";
+  if (lv === 6) return "epic";
+  if (lv === 5) return "rare";
+  if (lv === 4 || c.cardType === "Tamer") return "uncommon";
+  return "common"; // eggs, rookies, options
+}
 async function seedDigimon() {
-  console.log("digimon: fetching full catalog…");
-  const all = await jfetch("https://www.digimoncard.io/api-public/search.php?series=Digimon%20Card%20Game");
-  for (const c of all) {
-    if (!c.id || !c.name) continue;
-    add({ id: c.id, name: c.name, game: "digimon", img: `https://images.digimoncard.io/images/cards/${c.id}.jpg`, native: (c.rarity || "C").toUpperCase(), tier: mapRarity("digimon", c.rarity), set: c.set_name || "—" });
+  console.log("digimon: downloading apitcg dump…");
+  execSync(`curl -sL https://github.com/apitcg/digimon-tcg-data/archive/refs/heads/main.tar.gz -o /tmp/digimon.tgz && rm -rf /tmp/digimon && mkdir -p /tmp/digimon && tar xzf /tmp/digimon.tgz -C /tmp/digimon --strip-components=1`);
+  const dir = "/tmp/digimon/cards/en";
+  for (const f of readdirSync(dir)) {
+    let cards;
+    try { cards = JSON.parse(readFileSync(`${dir}/${f}`, "utf8")); } catch (e) { continue; }
+    if (!Array.isArray(cards)) continue;
+    for (const c of cards) {
+      const img = c.images && (c.images.large || c.images.small);
+      if (!img) continue;
+      add({ id: c.code || c.id, name: c.name, game: "digimon", img, native: c.level && c.level !== "-" ? c.level : (c.cardType || "—"), tier: digimonTier(c), set: (c.set && c.set.name) || (c.code || "").split("-")[0] });
+    }
   }
   console.log("digimon done:", count("digimon"));
+}
+
+// ---------- NETRUNNER: NetrunnerDB json (LCG — no rarity, tier synthesized) ----------
+async function seedNetrunner() {
+  console.log("netrunner: downloading NetrunnerDB dump…");
+  execSync(`curl -sL https://github.com/NetrunnerDB/netrunner-cards-json/archive/refs/heads/master.tar.gz -o /tmp/nrdb.tgz && rm -rf /tmp/nrdb && mkdir -p /tmp/nrdb && tar xzf /tmp/nrdb.tgz -C /tmp/nrdb --strip-components=1`);
+  const packName = Object.fromEntries(JSON.parse(readFileSync("/tmp/nrdb/packs.json", "utf8")).map((p) => [p.code, p.name]));
+  for (const f of readdirSync("/tmp/nrdb/pack")) {
+    let cards;
+    try { cards = JSON.parse(readFileSync(`/tmp/nrdb/pack/${f}`, "utf8")); } catch (e) { continue; }
+    if (!Array.isArray(cards)) continue;
+    for (const c of cards) {
+      if (!c.code || !c.title) continue;
+      const tier = c.type_code === "identity" ? "legendary"
+        : c.type_code === "agenda" ? "epic"
+        : c.uniqueness ? "rare"
+        : (c.faction_cost || 0) >= 4 ? "uncommon" : "common";
+      add({ id: c.code, name: c.title, game: "netrunner", img: `https://static.nrdbassets.com/v1/large/${c.code}.jpg`, native: c.type_code || "card", tier, set: packName[c.pack_code] || c.pack_code || "—" });
+    }
+  }
+  console.log("netrunner done:", count("netrunner"));
+}
+
+// ---------- WEISS SCHWARZ: HOTC english DB (official ws-tcg images) ----------
+async function seedWeiss() {
+  console.log("weiss: downloading WeissSchwarz-ENG-DB…");
+  execSync(`curl -sL https://github.com/CCondeluci/WeissSchwarz-ENG-DB/archive/refs/heads/master.tar.gz -o /tmp/weiss.tgz && rm -rf /tmp/weiss && mkdir -p /tmp/weiss && tar xzf /tmp/weiss.tgz -C /tmp/weiss --strip-components=1`);
+  const dir = "/tmp/weiss/DB";
+  for (const f of readdirSync(dir)) {
+    let j;
+    try { j = JSON.parse(readFileSync(`${dir}/${f}`, "utf8")); } catch (e) { continue; }
+    for (const c of (Array.isArray(j) ? j : Object.values(j))) {
+      if (!c.code || !c.name || !c.image) continue;
+      add({ id: c.code, name: c.name, game: "weiss", img: c.image, native: c.rarity || "C", tier: mapRarity("weiss", c.rarity), set: c.expansion || "—" });
+    }
+  }
+  console.log("weiss done:", count("weiss"));
 }
 
 // ---------- HEARTHSTONE: hearthstonejson ----------
@@ -327,7 +386,10 @@ for (const [name, fn] of [["mtg", seedMTG], ["pokemon", seedPokemon], ["ygo", se
   ["unionarena", () => seedApitcgRepo("union-arena-tcg-data", "unionarena")],
   ["swu", seedSWU],
   ["fab", seedFAB],
-  ["riftbound", seedRiftbound]]) {
+  ["riftbound", seedRiftbound],
+  ["digimon", seedDigimon],
+  ["netrunner", seedNetrunner],
+  ["weiss", seedWeiss]]) {
   try { await fn(); } catch (e) { console.log("seeder", name, "FAILED:", e.message); }
   if (globalThis.gc) globalThis.gc();
 }
