@@ -121,11 +121,12 @@ export default function Home() {
     try { localStorage.setItem("omnideck:history", JSON.stringify(history)); } catch (e) {}
   }, [history]);
 
-  // lock page scroll while the pack screen is open
+  // lock page scroll while a fullscreen experience (or the in-tab editor) is up
   useEffect(() => {
-    document.body.style.overflow = screen || inspect || arena || duel || editDeck || mp ? "hidden" : "";
+    const editing = editDeck && tab === "decks";
+    document.body.style.overflow = screen || inspect || arena || duel || editing || mp ? "hidden" : "";
     return () => { document.body.style.overflow = ""; };
-  }, [screen, inspect, arena, duel, editDeck, mp]);
+  }, [screen, inspect, arena, duel, editDeck, mp, tab]);
 
   // multiplayer polling: waiting room → opponent joined; in-game → their moves
   useEffect(() => {
@@ -314,6 +315,7 @@ export default function Home() {
       else {
         duelAfterSave.current = true;
         setEditDeck(activeDeck ? { ...activeDeck } : { id: null, name: "Deck 1", keys: [] });
+        setTab("decks");
       }
     } finally { setBusy(false); }
   }
@@ -392,6 +394,7 @@ export default function Home() {
       else {
         duelAfterSave.current = false;
         setEditDeck(activeDeck ? { ...activeDeck } : { id: null, name: "Deck 1", keys: [] });
+        setTab("decks");
         toast("Build your deck first");
       }
       return null;
@@ -599,7 +602,7 @@ export default function Home() {
           </div>
         )}
 
-        {tab === "decks" && (
+        {tab === "decks" && !editDeck && (
           <div className="shelf tabshelf">
             <h2 className="display">Your decks</h2>
             <div className="tabnote">
@@ -623,7 +626,7 @@ export default function Home() {
               ))}
             </div>
             {deckStore.decks.length < 12 && (
-              <div className="btns"><button className="pull display" onClick={newDeck}>＋ NEW DECK</button></div>
+              <div className="actions"><button className="pull display" onClick={newDeck}>＋ NEW DECK</button></div>
             )}
           </div>
         )}
@@ -636,7 +639,7 @@ export default function Home() {
                 OMNIRULES — Magic, Pokémon and Yu-Gi-Oh! merged into one game.
                 {activeDeck ? <> Active deck: <b>{activeDeck.name}</b>.</> : <> Build a deck in the DECKS tab first.</>}
               </div>
-              <div className="btns battle-btns">
+              <div className="actions">
                 <button className="pull display" disabled={busy} onClick={openDuel}>⚔ DUEL THE AI</button>
                 <button className="pull10 display" disabled={busy} onClick={() => setMp({ phase: "menu", code: "" })}>🌐 VS FRIEND</button>
                 <button className="pull10 display" disabled={busy} onClick={openArena}>🗡 QUICK SKIRMISH</button>
@@ -839,10 +842,13 @@ export default function Home() {
         </div>
       )}
 
-      {/* ---------- deck builder ---------- */}
-      {editDeck && !duel && (
-        <DeckBuilder pool={eligibleBinder} initial={editDeck.keys} deckName={editDeck.name} onSave={saveDeck}
-          onClose={() => { duelAfterSave.current = false; setEditDeck(null); }} />
+      {/* ---------- deck builder: lives in the DECKS tab, above the tab bar; ----------
+           stays mounted (edits survive) while you visit other tabs */}
+      {editDeck && (
+        <div className={tab === "decks" ? undefined : "offstage"}>
+          <DeckBuilder pool={eligibleBinder} initial={editDeck.keys} deckName={editDeck.name} onSave={saveDeck}
+            onClose={() => { duelAfterSave.current = false; setEditDeck(null); }} />
+        </div>
       )}
 
       {/* ---------- merged-rules duel ---------- */}
