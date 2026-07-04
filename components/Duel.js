@@ -5,7 +5,10 @@ import {
   declareAttack, resolveCombat, aiBlocks, aiStep, aiAttackers,
   canPlay, canAttach, canAttackWith, costOf, energyNeed, tributeNeed,
   isEvolution, evoTargets, isSpell, fxTargets, FX_TARGET, FX_LABEL,
+  pkmAtks, slotAtk, minAtkCost, maxAtkCost,
 } from "../lib/duel";
+
+const atkList = (c) => (pkmAtks(c) ? " · " + c.atks.map(([n, d, co]) => `${n} ${d}⚔ (${co}⚡)`).join(", ") : "");
 
 const COST_GLYPH = { mana: "💧", energy: "⚡", tribute: "⭐", trainer: "🎒", spell: "✨" };
 const GAME_TAG = { mtg: "MTG", pokemon: "PKM", yugioh: "YGO" };
@@ -178,7 +181,12 @@ export default function Duel({
     if (!b) return;
     if (b.attacked) setHint(`${b.card.name} already attacked.`);
     else if (b.sick) setHint(`${b.card.name} has summoning sickness — attacks next turn.`);
-    else if (b.card.game === "pokemon") setHint(mine.energyUsed ? "Energy already attached this turn." : `${b.card.name} needs ${energyNeed(b.card)}⚡ — tap it to attach.`);
+    else if (b.card.game === "pokemon") {
+      const cheapest = pkmAtks(b.card) ? b.card.atks.find((a) => a[2] > b.energy) : null;
+      setHint(mine.energyUsed ? "Energy already attached this turn."
+        : cheapest ? `${b.card.name} needs ${cheapest[2]}⚡ for ${cheapest[0]} — tap it to attach.`
+        : `${b.card.name} needs ${energyNeed(b.card)}⚡ — tap it to attach.`);
+    }
   }
 
   function clickFoe(target) {
@@ -332,7 +340,8 @@ export default function Duel({
   const Board = ({ side, ownSide }) => (
     <div className={`drow${ownSide ? " mineboard" : ""}`}>
       {side.board.map((b, x) => {
-        const need = b.card.game === "pokemon" ? energyNeed(b.card) : 0;
+        const need = b.card.game === "pokemon" ? (pkmAtks(b.card) ? maxAtkCost(b.card) : energyNeed(b.card)) : 0;
+        const liveAtk = slotAtk(b);
         const ready = ownSide && myTurn && canAttackWith(st, my, x);
         // during blocks: enemy attackers glow; my picked blocker is outlined
         const isAtk = !ownSide && iDefend && attackerSet.has(x);
@@ -353,14 +362,18 @@ export default function Duel({
         return (
           <button key={b.uid || `${b.card.game}:${b.card.id}:${x}`} className={cls} data-bid={(ownSide ? "m" : "f") + x}
             onClick={() => (ownSide ? clickMine(x) : clickFoe(x))}
-            title={`${b.card.name} · ${GAME_TAG[b.card.game]}`}>
+            title={`${b.card.name} · ${GAME_TAG[b.card.game]}${atkList(b.card)}`}>
             <img src={b.card.img} alt={b.card.name} referrerPolicy="no-referrer" />
-            <span className="dstat datk">{b.card.bs[0]}⚔</span>
+            <span className={`dstat datk${pkmAtks(b.card) && liveAtk < b.card.bs[0] ? " dim" : ""}`}>{liveAtk}⚔</span>
             <span className={`dstat dhpv${b.curHp < b.card.bs[1] ? " hurt" : ""}`}>{b.curHp}♥</span>
             {(myAtk || isAtk) && <span className="dtag datkmark">⚔{myAtk && myBlockedAtk && myBlockedAtk.has(x) ? "🛡" : ""}</span>}
             {(ownSide && blockedBy[x] !== undefined || foeIsBlocking) && <span className="dtag">🛡</span>}
             {b.sick && !myAtk && <span className="dtag">💤</span>}
             {need > 0 && <span className={`dtag den${b.energy >= need ? " full" : ""}`}>⚡{b.energy}/{need}</span>}
+            {ownSide && myTurn && !pending && canAttach(st, my, x) && (
+              <span className="dattach" title="Attach energy"
+                onClick={(e) => { e.stopPropagation(); attachEnergy(st, my, x); setHint(""); sync(); refresh(); }}>⚡+</span>
+            )}
           </button>
         );
       })}
@@ -412,9 +425,9 @@ export default function Duel({
           return (
             <button key={`${c.game}:${c.id}:${i}`} className={`dcard hand t-${c.tier}${ok ? "" : " nope"}${pending && pending.hand === i ? " sel" : ""}`}
               onClick={() => clickHand(i)}
-              title={`${c.name} · ${GAME_TAG[c.game]}${isEvolution(c) ? ` · evolves from ${c.evo}` : ""}${spell ? ` · ${c.fx[0]} ${c.fx[1]}` : ""}`}>
+              title={`${c.name} · ${GAME_TAG[c.game]}${isEvolution(c) ? ` · evolves from ${c.evo}` : ""}${spell ? ` · ${c.fx[0]} ${c.fx[1]}` : ""}${atkList(c)}`}>
               <img src={c.img} alt={c.name} referrerPolicy="no-referrer" />
-              <span className="dcost">{kind === "mana" ? <>{COST_GLYPH.mana}{n}</> : spell ? COST_GLYPH[kind] : <>{COST_GLYPH[kind]}{n}</>}</span>
+              <span className="dcost">{kind === "mana" ? <>{COST_GLYPH.mana}{n}</> : spell ? COST_GLYPH[kind] : <>{COST_GLYPH[kind]}{kind === "energy" && pkmAtks(c) ? minAtkCost(c) : n}</>}</span>
               {isEvolution(c) && <span className="dtag">🧬</span>}
               {spell ? (
                 <span className="dstat datk">{FX_LABEL[c.fx[0]]}{c.fx[0] === "kill" || c.fx[0] === "tutor" || c.fx[0] === "tutorc" ? "" : c.fx[1]}</span>

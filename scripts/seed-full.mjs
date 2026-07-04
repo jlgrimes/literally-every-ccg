@@ -225,11 +225,19 @@ async function seedPokemon() {
     for (const c of cards) {
       if (!c.images || !c.images.large) continue;
       let dmg = 0;
-      for (const a of c.attacks || []) { const d = parseInt(a.damage, 10); if (d > dmg) dmg = d; }
+      const atks = [];
+      for (const a of c.attacks || []) {
+        const d = parseInt(a.damage, 10);
+        if (d > dmg) dmg = d;
+        // atks: the REAL attack list [name, dmg on the shared scale, energy cost];
+        // in the duel, attached energy unlocks these tier by tier
+        if (d > 0) atks.push([a.name, clampStat(d / 2.4), Math.min((a.cost || []).length, 4)]);
+      }
+      atks.sort((x, y) => x[2] - y[2] || y[1] - x[1]);
       const bs = c.supertype === "Pokémon" ? mapStats("pokemon", { hp: parseInt(c.hp, 10), dmg }) : null;
       const fx = c.supertype === "Trainer" ? mapFx("pokemon", (c.rules || []).join(" ")) : null;
       // evo: name of the pre-evolution — the duel only lets these be played on top of it
-      add({ id: c.id, name: c.name, game: "pokemon", img: c.images.large, native: c.rarity || "Common", tier: mapRarity("pokemon", c.rarity), set: setName[setId] || setId, ...(bs && { bs }), ...(bs && c.evolvesFrom && { evo: c.evolvesFrom }), ...(fx && { fx }) });
+      add({ id: c.id, name: c.name, game: "pokemon", img: c.images.large, native: c.rarity || "Common", tier: mapRarity("pokemon", c.rarity), set: setName[setId] || setId, ...(bs && { bs }), ...(bs && atks.length && { atks: atks.slice(0, 3) }), ...(bs && c.evolvesFrom && { evo: c.evolvesFrom }), ...(fx && { fx }) });
     }
   }
   console.log("Pokémon done:", count("pokemon"));

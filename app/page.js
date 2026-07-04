@@ -246,7 +246,8 @@ export default function Home() {
   // healed binder so callers don't have to wait for the state update.
   async function healFighters() {
     const need = Object.entries(state.binder)
-      .filter(([, c]) => BATTLE_GAMES.includes(c.game) && !c.bs && !c.fx)
+      .filter(([, c]) => BATTLE_GAMES.includes(c.game) &&
+        ((!c.bs && !c.fx) || (c.game === "pokemon" && c.bs && !c.atks)))
       .map(([k]) => k);
     if (!need.length) return state.binder;
     try {
