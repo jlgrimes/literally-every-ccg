@@ -51,7 +51,10 @@ export default function Duel({
     if (mode === "pvp" && !st.over) { concede(st, my); sync(); }
     if (st.over && !reported.current) {
       reported.current = true;
-      onDone(st.winner === my ? "win" : st.winner === their ? "loss" : "draw");
+      onDone(st.winner === my ? "win" : st.winner === their ? "loss" : "draw", {
+        opp: themLabel, turns: st.turn, log: st.log,
+        myHp: Math.max(0, mine.hp), theirHp: Math.max(0, foe.hp),
+      });
     } else onDone(null);
   }
 

@@ -578,6 +578,31 @@ footer a:hover{color:var(--text)}
   backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);cursor:pointer;animation:psin .3s ease;
 }
 
+/* ---------- match log ---------- */
+.mlog{display:flex;flex-direction:column;gap:6px}
+.mrow{border:1px solid var(--line);border-radius:10px;background:var(--panel);overflow:hidden}
+.mrow summary{
+  display:flex;align-items:center;gap:8px;padding:9px 12px;cursor:pointer;list-style:none;
+  font-size:12px;
+}
+.mrow summary::-webkit-details-marker{display:none}
+.mrow[open]{border-color:#3a4460}
+.mres{
+  width:20px;height:20px;border-radius:6px;display:flex;align-items:center;justify-content:center;
+  font-size:11px;font-weight:800;flex:0 0 auto;
+}
+.mres.r-win{color:#0d1a12;background:var(--t-uncommon)}
+.mres.r-loss{color:#1a0d0f;background:#ff5d6c}
+.mres.r-draw{color:var(--text);background:#2a3352}
+.mmode{flex:0 0 auto}
+.mopp{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mmeta{color:var(--muted);font-size:10.5px;flex:0 0 auto}
+.mtime{color:var(--muted);font-size:10px;margin-left:auto;flex:0 0 auto}
+.mlogbody{
+  border-top:1px dashed var(--line);padding:8px 12px;max-height:180px;overflow-y:auto;
+  font-size:10.5px;line-height:1.6;color:var(--muted);
+}
+
 /* ---------- multiplayer ---------- */
 .mp-input{
   z-index:2;width:100%;max-width:280px;padding:12px 14px;border-radius:12px;

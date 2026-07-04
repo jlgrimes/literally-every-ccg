@@ -58,6 +58,9 @@ export default function Home() {
   const [builder, setBuilder] = useState(false);
   const duelAfterSave = useRef(false);
 
+  // match log: newest-first records of finished matches
+  const [history, setHistory] = useState([]);
+
   // multiplayer: null | { phase:"menu", code } | { phase:"waiting", code, token }
   const [mp, setMp] = useState(null);
   const [pname, setPname] = useState("");
@@ -84,6 +87,10 @@ export default function Home() {
       if (Array.isArray(dk)) setDeckKeys(dk);
     } catch (e) {}
     try { setPname(localStorage.getItem("omnideck:name") || ""); } catch (e) {}
+    try {
+      const h = JSON.parse(localStorage.getItem("omnideck:history") || "[]");
+      if (Array.isArray(h)) setHistory(h);
+    } catch (e) {}
     loaded.current = true;
     fetch("/api/meta").then((r) => r.json()).then(setMeta).catch(() => {});
   }, []);
@@ -99,6 +106,10 @@ export default function Home() {
     if (!loaded.current || !deckKeys) return;
     try { localStorage.setItem("omnideck:deck", JSON.stringify(deckKeys)); } catch (e) {}
   }, [deckKeys]);
+  useEffect(() => {
+    if (!loaded.current) return;
+    try { localStorage.setItem("omnideck:history", JSON.stringify(history)); } catch (e) {}
+  }, [history]);
 
   // lock page scroll while the pack screen is open
   useEffect(() => {
@@ -308,7 +319,11 @@ export default function Home() {
     } else toast("Deck saved");
   }
 
-  function duelDone(result) {
+  function recordMatch(entry) {
+    setHistory((h) => [{ ts: Date.now(), ...entry }, ...h].slice(0, 50));
+  }
+
+  function duelDone(result, summary) {
     if (result) {
       setArenaRec((rec) => ({
         w: rec.w + (result === "win" ? 1 : 0),
@@ -316,6 +331,15 @@ export default function Home() {
         d: rec.d + (result === "draw" ? 1 : 0),
       }));
       if (result === "win") celebrate("epic");
+      recordMatch({
+        mode: duel && duel.mode === "pvp" ? "pvp" : "ai",
+        result,
+        opp: (summary && summary.opp) || "AI",
+        turns: summary && summary.turns,
+        myHp: summary && summary.myHp,
+        oppHp: summary && summary.theirHp,
+        log: ((summary && summary.log) || []).slice(-60),
+      });
     }
     mpInfo.current = null;
     setDuel(null);
@@ -423,6 +447,11 @@ export default function Home() {
         d: rec.d + (j.result === "draw" ? 1 : 0),
       }));
       if (j.result === "win") celebrate("epic");
+      recordMatch({
+        mode: "skirmish", result: j.result, opp: "AI",
+        log: j.lanes.map((l) =>
+          `${l.player.name} (${l.player.bs[0]}⚔/${l.player.bs[1]}♥) vs ${l.ai.name} (${l.ai.bs[0]}⚔/${l.ai.bs[1]}♥) — ${l.winner === "player" ? "won" : l.winner === "ai" ? "lost" : "draw"}`),
+      });
       setArena({ phase: "result", sel: arena.sel, data: j });
     } catch (e) {
       toast("The arena gates jammed — try again");
@@ -530,6 +559,34 @@ export default function Home() {
             <div className="empty">{uniqueOwned ? "No cards match these filters." : "Empty binder. Rip your first pack."}</div>
           )}
         </div>
+
+        {history.length > 0 && (
+          <div className="shelf">
+            <h2 className="display">Match log <button onClick={() => { if (confirm("Clear match history?")) setHistory([]); }}>Clear</button></h2>
+            <div className="mlog">
+              {history.slice(0, 20).map((m) => (
+                <details key={m.ts} className="mrow">
+                  <summary>
+                    <b className={`mres r-${m.result}`}>{m.result === "win" ? "W" : m.result === "loss" ? "L" : "D"}</b>
+                    <span className="mmode" title={m.mode === "pvp" ? "multiplayer duel" : m.mode === "skirmish" ? "skirmish" : "AI duel"}>
+                      {m.mode === "pvp" ? "🌐" : m.mode === "skirmish" ? "🗡" : "⚔"}
+                    </span>
+                    <span className="mopp">vs {m.opp || "AI"}</span>
+                    {Number.isFinite(m.turns) && <span className="mmeta">{m.turns} turns</span>}
+                    {Number.isFinite(m.myHp) && <span className="mmeta">{m.myHp}–{m.oppHp} hp</span>}
+                    <span className="mtime">
+                      {new Date(m.ts).toLocaleDateString(undefined, { month: "short", day: "numeric" })}{" "}
+                      {new Date(m.ts).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}
+                    </span>
+                  </summary>
+                  {m.log && m.log.length > 0 && (
+                    <div className="mlogbody">{m.log.map((l, i) => <div key={i}>{l}</div>)}</div>
+                  )}
+                </details>
+              ))}
+            </div>
+          </div>
+        )}
 
         <footer>
           Card effects © Simon Goellner — <a href="https://github.com/simeydotme/pokemon-cards-css" target="_blank" rel="noreferrer">simeydotme/pokemon-cards-css</a> (GPL-3.0) · <a href="https://github.com/jlgrimes/literally-every-ccg" target="_blank" rel="noreferrer">Source</a> · thanks, Simon ♥
