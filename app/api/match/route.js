@@ -74,10 +74,12 @@ export async function POST(request) {
     const prev = m.state;
     const state = trimLog(body.state);
     if (!state || !state.p || !state.ai) return err("bad state");
-    // only the player whose turn it is may write — except a concede, which
-    // is any-time and can only lose you the game
+    // only the player whose turn it is may write — except the DEFENDER
+    // resolving a block phase, and concedes (any-time, can only lose you
+    // the game)
     const isConcede = state.over && state[side] && state[side].hp <= 0;
-    if (prev && prev.active !== side && !prev.over && !isConcede) return err("not your turn", 409);
+    const isBlockResolve = prev && prev.phase === "block" && prev.active !== side;
+    if (prev && prev.active !== side && !prev.over && !isConcede && !isBlockResolve) return err("not your turn", 409);
     await updateMatch(code, {
       state, seq: m.seq + 1,
       status: state.over ? "done" : "active",

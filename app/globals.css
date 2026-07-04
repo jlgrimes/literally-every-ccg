@@ -544,6 +544,8 @@ footer a:hover{color:var(--text)}
 .dcard.sel{outline:3px solid var(--gold);outline-offset:-1px;box-shadow:0 0 16px rgba(255,194,77,.7)}
 .dcard.trib{outline:3px solid #ff5d6c;outline-offset:-1px;box-shadow:0 0 16px rgba(255,93,108,.6)}
 .dcard.targetable{cursor:crosshair;box-shadow:0 0 10px rgba(255,93,108,.5)}
+.dcard.attacking{outline:3px solid #ff5d6c;outline-offset:-1px;box-shadow:0 0 16px rgba(255,93,108,.6);cursor:crosshair}
+.dtag.datkmark{color:#ff5d6c;border-color:#ff5d6c}
 .dcard.spent{filter:grayscale(.6) brightness(.6)}
 .dcard.nope{filter:grayscale(.7) brightness(.55)}
 .dstat{

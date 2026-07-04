@@ -18,6 +18,9 @@ with unified rarity tiers.
   with energy attached and evolve on top of their pre-evolutions, and
   Yu-Gi-Oh monsters tribute-summon by sacrificing your board (yes, you can
   sacrifice a Grizzly Bears to summon Blue-Eyes White Dragon)
+- Magic-style combat: attackers swing at the player, and the defender
+  assigns blockers — chump-block with a Kuriboh, wall with a Snorlax, or
+  take it to the face; empty decks bleed fatigue
 - Spells, trainers and traps: ~15,000 non-creature cards classified into a
   shared effect vocabulary (damage, destroy, draw, buff, weaken, heal, board
   nuke, and deck-search tutors) with magnitudes read from their real rules
