@@ -50,6 +50,51 @@ body{
 .tabbtn .ticon{font-size:21px;line-height:1;filter:grayscale(1) opacity(.55)}
 .tabbtn.on{color:var(--gold)}
 .tabbtn.on .ticon{filter:none}
+/* ---------- ℹ rules button + full-page rules modal ---------- */
+.infobtn{
+  position:fixed;top:calc(10px + env(safe-area-inset-top));right:12px;z-index:58;
+  width:36px;height:36px;border-radius:50%;border:1px solid var(--line);
+  background:rgba(16,20,31,.85);color:var(--muted);font-size:17px;line-height:1;
+  cursor:pointer;font-family:inherit;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
+  display:flex;align-items:center;justify-content:center;
+}
+.infobtn:hover{color:var(--gold);border-color:rgba(255,194,77,.5)}
+.rulesscreen{
+  z-index:140;justify-content:flex-start;align-items:stretch;gap:0;
+  overflow:hidden;padding:0;
+}
+.rules-head{
+  display:flex;align-items:center;justify-content:space-between;
+  width:100%;max-width:560px;margin:0 auto;flex:0 0 auto;
+  padding:calc(14px + env(safe-area-inset-top)) 16px 12px;
+  border-bottom:1px solid var(--line);
+}
+.rules-title{font-size:16px;font-weight:800;letter-spacing:.24em;text-indent:.24em;color:var(--gold)}
+.rules-x{padding:8px 14px}
+.rules-body{
+  flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;width:100%;
+  max-width:560px;margin:0 auto;padding:18px 18px calc(40px + env(safe-area-inset-bottom));
+  font-size:13.5px;line-height:1.7;color:var(--text);
+}
+.rules-lede{font-size:14.5px;color:var(--text);margin:0 0 6px}
+.rules-body h3{
+  font-size:12px;font-weight:800;letter-spacing:.18em;text-transform:uppercase;
+  color:var(--gold);margin:26px 0 8px;
+}
+.rules-body ul{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:7px}
+.rules-body li::marker{color:var(--muted)}
+.rules-body b{color:var(--text);font-weight:700}
+.rules-body p{margin:8px 0}
+.rules-dim{color:var(--muted);font-size:12px}
+.rules-end{margin-top:30px;text-align:center}
+.rules-table{width:100%;border-collapse:collapse;margin:10px 0;font-size:12px}
+.rules-table td{
+  padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:top;line-height:1.5;
+}
+.rules-table td:first-child{width:46%}
+.rules-table td:first-child span{display:block;color:var(--muted);font-size:11px}
+.rules-table td:last-child{color:var(--muted)}
+
 .tabshelf{min-height:60vh}
 .tabnote{color:var(--muted);font-size:12px;line-height:1.6;letter-spacing:.03em;margin:-4px 0 2px}
 .tabnote b{color:var(--text)}

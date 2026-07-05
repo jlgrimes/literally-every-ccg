@@ -4,6 +4,7 @@ import PackWrapper from "../components/PackWrapper";
 import CardStack from "../components/CardStack";
 import Duel from "../components/Duel";
 import DeckBuilder from "../components/DeckBuilder";
+import Rules from "../components/Rules";
 
 const TIER_ORDER = ["common", "uncommon", "rare", "epic", "legendary"];
 const TIER_LABEL = { common: "Common", uncommon: "Uncommon", rare: "Rare", epic: "Epic", legendary: "Legendary" };
@@ -57,6 +58,7 @@ export default function Home() {
   // multiple saved decks: { decks: [{id, name, keys}], active: id }
   const [deckStore, setDeckStore] = useState({ decks: [], active: null });
   const [tab, setTab] = useState("home");         // bottom nav: home | cards | decks | battle
+  const [rules, setRules] = useState(false);      // ℹ full-page rules modal
   const [editDeck, setEditDeck] = useState(null); // deck being edited in the builder
   const duelAfterSave = useRef(false);
   const activeDeck = deckStore.decks.find((d) => d.id === deckStore.active) || null;
@@ -123,9 +125,9 @@ export default function Home() {
   // lock page scroll while a fullscreen experience (or the in-tab editor) is up
   useEffect(() => {
     const editing = editDeck && tab === "decks";
-    document.body.style.overflow = screen || inspect || arena || duel || editing || mp ? "hidden" : "";
+    document.body.style.overflow = screen || inspect || arena || duel || editing || mp || rules ? "hidden" : "";
     return () => { document.body.style.overflow = ""; };
-  }, [screen, inspect, arena, duel, editDeck, mp, tab]);
+  }, [screen, inspect, arena, duel, editDeck, mp, tab, rules]);
 
   // multiplayer polling: waiting room → opponent joined; in-game → their moves
   useEffect(() => {
@@ -678,6 +680,10 @@ export default function Home() {
           </>
         )}
       </div>
+
+      {/* ---------- rules: ℹ corner button + full-page modal ---------- */}
+      <button className="infobtn" title="How to play" aria-label="How to play" onClick={() => setRules(true)}>ℹ</button>
+      {rules && <Rules onClose={() => setRules(false)} />}
 
       {/* ---------- bottom tab bar ---------- */}
       <nav className="tabbar">
