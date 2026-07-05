@@ -38,7 +38,7 @@ export default function Duel({
   const popId = useRef(0);
   // pending: { hand, need, picked:[] } tribute mode | { hand, evolve:true } evolution targeting
   const [pending, setPending] = useState(null);
-  const [hint, setHint] = useState("Play cards, then attack. Mana pays for most of the multiverse; Pokémon run on energy, big Yu-Gi-Oh monsters demand tributes.");
+  const [hint, setHint] = useState("Play cards, then attack.");
   const reported = useRef(false);
 
   // opponent moved — adopt their state. Never clobber our own in-progress

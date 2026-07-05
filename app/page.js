@@ -539,7 +539,7 @@ export default function Home() {
             <div className="homestage">
               <div className="idlehint">
                 <div className="idleglyph display">✦</div>
-                <div>{totalInDb ? totalInDb.toLocaleString() : "…"} cards.<br />One pack at a time.</div>
+                <div>One pack at a time.</div>
               </div>
             </div>
 
@@ -550,7 +550,7 @@ export default function Home() {
                 </button>
               </div>
               <div className="odds">
-                Hit slot — <b className="ol">Legendary 8%</b> · <b className="oe">Epic 20%</b> · <b className="or">Rare 72%</b> · <b className="ol">⚡ God pack 0.5%</b>
+                <b className="ol">Legendary 8%</b> · <b className="oe">Epic 20%</b> · <b className="or">Rare 72%</b> · <b className="ol">God pack 0.5%</b>
               </div>
             </div>
 
@@ -605,11 +605,7 @@ export default function Home() {
         {tab === "decks" && !editDeck && (
           <div className="shelf tabshelf">
             <h2 className="display">Your decks</h2>
-            <div className="tabnote">
-              {deckStore.decks.length
-                ? <>Tap a deck to make it active — duels and matches use the active one.</>
-                : <>No decks yet. A deck is 20 cards from your collection — duplicates up to the copies you own.</>}
-            </div>
+            {deckStore.decks.length === 0 && <div className="tabnote">No decks yet — build one from your pulls.</div>}
             <div className="deck-list">
               {deckStore.decks.map((d) => (
                 <div key={d.id} className={`deckrow${d.id === deckStore.active ? " on" : ""}`}>
@@ -636,9 +632,7 @@ export default function Home() {
             <div className="shelf tabshelf">
               <h2 className="display">Battle</h2>
               <div className="tabnote">
-                OMNIRULES — all 14 games, one merged rulebook: mana &amp; summoning sickness,
-                Pokémon energy &amp; evolution, Yu-Gi-Oh tributes.
-                {activeDeck ? <> Active deck: <b>{activeDeck.name}</b>.</> : <> Build a deck in the DECKS tab first.</>}
+                {activeDeck ? <>Deck: <b>{activeDeck.name}</b></> : <>Build a deck in the DECKS tab first.</>}
               </div>
               <div className="actions">
                 <button className="pull display" disabled={busy} onClick={openDuel}>⚔ DUEL THE AI</button>
@@ -681,8 +675,10 @@ export default function Home() {
         )}
       </div>
 
-      {/* ---------- rules: ℹ corner button + full-page modal ---------- */}
-      <button className="infobtn" title="How to play" aria-label="How to play" onClick={() => setRules(true)}>ℹ</button>
+      {/* ---------- rules: ℹ corner button (battle tab) + full-page modal ---------- */}
+      {tab === "battle" && !editDeck && (
+        <button className="infobtn" title="How to play" aria-label="How to play" onClick={() => setRules(true)}>ℹ</button>
+      )}
       {rules && <Rules onClose={() => setRules(false)} />}
 
       {/* ---------- bottom tab bar ---------- */}
@@ -746,11 +742,7 @@ export default function Home() {
           {arena.phase === "pick" && (
             <>
               <div className="ps-title display">Choose your fighters</div>
-              <div className="arena-sub">
-                {fighterPool.length
-                  ? <>Pick 3 — every game's creatures &amp; characters fight on one shared ATK/HP scale: real printed stats where the game has them, rarity-derived power everywhere else.</>
-                  : <>No fighters in your binder yet. Rip a pack — creatures and characters from any game can battle.</>}
-              </div>
+              {!fighterPool.length && <div className="arena-sub">No fighters yet — rip a pack first.</div>}
               {fighterPool.length > 0 && (
                 <div className="arena-grid">
                   {fighterPool.map((c) => {
@@ -818,13 +810,12 @@ export default function Home() {
           {mp.phase === "menu" && (
             <>
               <div className="ps-title display">Duel a friend</div>
-              <div className="arena-sub">Same rules, real opponent. You both bring your own 20-card deck.</div>
               <input className="mp-input" maxLength={20} placeholder="your name" value={pname}
                 onChange={(e) => setName(e.target.value)} />
               <div className="arena-actions">
                 <button className="pull display" disabled={busy} onClick={mpCreate}>CREATE MATCH</button>
               </div>
-              <div className="mp-divider">— or join one —</div>
+              <div className="mp-divider">— or —</div>
               <input className="mp-input mp-code-input" maxLength={6} placeholder="MATCH CODE" value={mp.code}
                 onChange={(e) => setMp({ ...mp, code: e.target.value.toUpperCase() })} />
               <div className="arena-actions">
@@ -836,7 +827,7 @@ export default function Home() {
           {mp.phase === "waiting" && (
             <>
               <div className="ps-title display">Match created</div>
-              <div className="arena-sub">Send this code to your friend — the duel starts the moment they join.</div>
+              <div className="arena-sub">Send your friend this code.</div>
               <div className="mp-code display">{mp.code}</div>
               <div className="ps-continue">waiting for your opponent…</div>
               <div className="arena-actions">

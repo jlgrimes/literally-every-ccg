@@ -143,13 +143,9 @@ export default function DeckBuilder({ pool, initial, deckName, onSave, onClose }
           DECK <b className={deck.length === DECK_SIZE ? "ok" : ""}>{deck.length}/{DECK_SIZE}</b>
         </button>
       </div>
-      <div className="bsummary">
-        {deck.length === 0
-          ? (owned < DECK_SIZE
-            ? `You own ${owned} creatures — you need ${DECK_SIZE}. Rip more packs!`
-            : "Tap a card for details, or ＋ to add it fast.")
-          : <>⚔ {deck.length} creatures{deck.length === DECK_SIZE ? " · ready to save ✓" : ` · ${DECK_SIZE - deck.length} more`}</>}
-      </div>
+      {owned < DECK_SIZE && (
+        <div className="bsummary">You own {owned} creatures — you need {DECK_SIZE}. Rip more packs!</div>
+      )}
 
       {tab === "pool" && (
         <>
