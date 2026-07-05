@@ -22,9 +22,13 @@ levels (a Lv.7 mega is a legendary, an egg is a common).
   evolve on top of their pre-evolutions, Yu-Gi-Oh monsters tribute-summon
   by sacrificing your board (yes, you can sacrifice a Grizzly Bears to
   summon Blue-Eyes White Dragon) — and the other eleven games' characters
-  all play on the universal mana system, cost scaling with how powerful
-  the card is: real printed numbers where the game has them (Flesh and
-  Blood power and block values), rarity-tier power bands everywhere else.
+  all play on the universal mana system. Every stat is the card's PRINTED
+  number, normalized only by powers of ten: a Magic 3/3 is a 30/30,
+  Blue-Eyes' 3000 ATK reads 30, a 4000-power One Piece Franky reads 40,
+  a 7000 DP Digimon reads 70. Each game converts stats to mana at its own
+  exchange rate (big printed numbers cost proportionally more), tuned by
+  AI-vs-AI simulation until no game dominates; Pokémon attacks exploit
+  weakness for double damage against rival creatures.
   Character types come from each game's real card-type data (Lorcana
   characters, SWU units and leaders, Digimon, Netrunner ICE and programs,
   Weiß characters, …) — events, items and sites stay collection-only
