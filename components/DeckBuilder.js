@@ -56,8 +56,6 @@ export default function DeckBuilder({ pool, initial, deckName, onSave, onClose }
   const inDeck = {};
   for (const k of deck) inDeck[k] = (inDeck[k] || 0) + 1;
   const owned = pool.reduce((n, c) => n + (c.count || 1), 0);
-  const nCreatures = deck.filter((k) => byKey.get(k) && byKey.get(k).bs).length;
-  const nSpells = deck.length - nCreatures;
 
   const power = (c) => (c.bs ? c.bs[0] + c.bs[1] : c.fx ? c.fx[1] : 0);
   const filtered = useMemo(() => {
@@ -65,7 +63,7 @@ export default function DeckBuilder({ pool, initial, deckName, onSave, onClose }
     return pool
       .filter((c) =>
         (fGame === "all" || c.game === fGame) &&
-        (fKind === "all" || (fKind === "creature" ? !!c.bs : fKind === "spell" ? !!c.fx : isEvolution(c))) &&
+        (fKind === "all" || isEvolution(c)) &&
         (!needle || c.name.toLowerCase().includes(needle)))
       .sort((a, b) => rank(b.tier) - rank(a.tier) || power(b) - power(a));
   }, [pool, q, fGame, fKind]);
@@ -148,9 +146,9 @@ export default function DeckBuilder({ pool, initial, deckName, onSave, onClose }
       <div className="bsummary">
         {deck.length === 0
           ? (owned < DECK_SIZE
-            ? `You own ${owned} duel-legal cards — you need ${DECK_SIZE}. Rip more packs!`
+            ? `You own ${owned} creatures — you need ${DECK_SIZE}. Rip more packs!`
             : "Tap a card for details, or ＋ to add it fast.")
-          : <>⚔ {nCreatures} creatures · ✨ {nSpells} spells{deck.length === DECK_SIZE ? " · ready to save ✓" : ` · ${DECK_SIZE - deck.length} more`}</>}
+          : <>⚔ {deck.length} creatures{deck.length === DECK_SIZE ? " · ready to save ✓" : ` · ${DECK_SIZE - deck.length} more`}</>}
       </div>
 
       {tab === "pool" && (
@@ -161,7 +159,7 @@ export default function DeckBuilder({ pool, initial, deckName, onSave, onClose }
               {[["all", "All"], ...poolGames.map((g) => [g, GAME_CHIP[g] || g])].map(([g, l]) => (
                 <button key={g} className={`fchip${fGame === g ? " on" : ""}`} onClick={() => setFGame(g)}>{l}</button>
               ))}
-              {[["all", "All types"], ["creature", "⚔ Creatures"], ["spell", "✨ Spells"], ["evo", "🧬 Evolutions"]].map(([kd, l]) => (
+              {[["all", "All types"], ["evo", "🧬 Evolutions"]].map(([kd, l]) => (
                 <button key={kd} className={`fchip${fKind === kd ? " on" : ""}`} onClick={() => setFKind(kd)}>{l}</button>
               ))}
             </div>

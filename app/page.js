@@ -280,7 +280,7 @@ export default function Home() {
     const used = {};
     for (const k of keys) {
       const c = binder[k];
-      if (!c || (!Array.isArray(c.bs) && !Array.isArray(c.fx))) return false;
+      if (!c || !Array.isArray(c.bs)) return false; // creatures only
       used[k] = (used[k] || 0) + 1;
       if (used[k] > (c.count || 1)) return false;
     }
@@ -308,8 +308,8 @@ export default function Home() {
     try {
       const binder = await healFighters();
       if (validDeck(deckKeys, binder)) { await startDuel(deckKeys, binder); return; }
-      const owned = Object.values(binder).filter((c) => Array.isArray(c.bs) || Array.isArray(c.fx)).reduce((n, c) => n + (c.count || 1), 0);
-      if (owned < 20) toast(`You need 20 duel-legal cards for a deck — you own ${owned}. Rip more packs!`);
+      const owned = Object.values(binder).filter((c) => Array.isArray(c.bs)).reduce((n, c) => n + (c.count || 1), 0);
+      if (owned < 20) toast(`You need 20 creatures for a deck — you own ${owned}. Rip more packs!`);
       else {
         duelAfterSave.current = true;
         setEditDeck(activeDeck ? { ...activeDeck } : { id: null, name: "Deck 1", keys: [] });
@@ -387,8 +387,8 @@ export default function Home() {
     const binder = await healFighters();
     if (!validDeck(deckKeys, binder)) {
       setMp(null);
-      const owned = Object.values(binder).filter((c) => Array.isArray(c.bs) || Array.isArray(c.fx)).reduce((n, c) => n + (c.count || 1), 0);
-      if (owned < 20) toast(`You need 20 duel-legal cards for a deck — you own ${owned}. Rip more packs!`);
+      const owned = Object.values(binder).filter((c) => Array.isArray(c.bs)).reduce((n, c) => n + (c.count || 1), 0);
+      if (owned < 20) toast(`You need 20 creatures for a deck — you own ${owned}. Rip more packs!`);
       else {
         duelAfterSave.current = false;
         setEditDeck(activeDeck ? { ...activeDeck } : { id: null, name: "Deck 1", keys: [] });
@@ -502,8 +502,8 @@ export default function Home() {
   }
 
   const games = meta ? Object.keys(meta.byGame) : [];
-  // deck building takes creatures AND spells; the skirmish picker is stats-only
-  const eligibleBinder = Object.values(state.binder).filter((c) => Array.isArray(c.bs) || Array.isArray(c.fx));
+  // decks are creatures/characters only — spells and events spectate
+  const eligibleBinder = Object.values(state.binder).filter((c) => Array.isArray(c.bs));
   const fighterPool = Object.values(state.binder)
     .filter((c) => Array.isArray(c.bs))
     .sort((a, b) => rank(b.tier) - rank(a.tier) || b.bs[0] + b.bs[1] - (a.bs[0] + a.bs[1]))

@@ -35,11 +35,10 @@ levels (a Lv.7 mega is a legendary, an egg is a common).
 - Magic-style combat: attackers swing at the player, and the defender
   assigns blockers — chump-block with a Kuriboh, wall with a Snorlax, or
   take it to the face; empty decks bleed fatigue
-- Spells, trainers and traps: ~15,000 non-creature cards classified into a
-  shared effect vocabulary (damage, destroy, draw, buff, weaken, heal, board
-  nuke, and deck-search tutors) with magnitudes read from their real rules
-  text — Lightning Bolt burns, Professor Oak draws, Raigeki wipes the board,
-  Demonic Tutor searches your deck
+- Decks are creatures only — spells, trainers, traps, events, items and
+  sites are collection pieces, not deck cards (the engine still carries a
+  classified effect vocabulary for ~15,000 of them, parked for a future
+  mode)
 - Deck building, required: save up to 12 named decks built from cards you
   actually pulled (duplicates up to the copies you own) and switch the
   active one any time
