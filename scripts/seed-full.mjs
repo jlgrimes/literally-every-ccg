@@ -290,7 +290,8 @@ async function seedLorcana() {
       for (const c of cards) {
         if (!c.image_uris || !c.image_uris.digital) continue;
         const native = (c.rarity || "Common").replace(/_/g, " ");
-        add({ id: c.id, name: c.name + (c.version ? " — " + c.version : ""), game: "lorcana", img: c.image_uris.digital.normal || c.image_uris.digital.large, native, tier: mapRarity("lorcana", c.rarity || ""), set: s.name });
+        const chr = [].concat(c.type || []).some((t) => /character/i.test(t));
+        add({ id: c.id, name: c.name + (c.version ? " — " + c.version : ""), game: "lorcana", img: c.image_uris.digital.normal || c.image_uris.digital.large, native, tier: mapRarity("lorcana", c.rarity || ""), set: s.name, ...(chr && { chr: 1 }) });
       }
       await sleep(150);
     } catch (e) { console.log("lorcana set failed:", s.code, e.message); }
@@ -300,7 +301,7 @@ async function seedLorcana() {
 
 
 // ---------- apitcg GitHub data repos (One Piece / Gundam / DB Fusion / Union Arena) ----------
-async function seedApitcgRepo(repo, game) {
+async function seedApitcgRepo(repo, game, isChar = () => false) {
   console.log(game + ": downloading apitcg dump…");
   execSync(`curl -sL https://github.com/apitcg/${repo}/archive/refs/heads/main.tar.gz -o /tmp/${repo}.tgz && rm -rf /tmp/${repo} && mkdir -p /tmp/${repo} && tar xzf /tmp/${repo}.tgz -C /tmp/${repo} --strip-components=1`);
   const dir = `/tmp/${repo}/cards/en`;
@@ -311,7 +312,7 @@ async function seedApitcgRepo(repo, game) {
     for (const c of cards) {
       const img = c.images && (c.images.large || c.images.small);
       if (!img) continue;
-      add({ id: c.code || c.id, name: c.name, game, img, native: c.rarity || "C", tier: mapRarity(game, c.rarity), set: (c.set && c.set.name) || (c.code || "").split("-")[0] });
+      add({ id: c.code || c.id, name: c.name, game, img, native: c.rarity || "C", tier: mapRarity(game, c.rarity), set: (c.set && c.set.name) || (c.code || "").split("-")[0], ...(isChar(c) && { chr: 1 }) });
     }
   }
   console.log(game + " done:", count(game));
@@ -333,7 +334,7 @@ async function seedRiftbound() {
       if (!c.rarity || /token/i.test(c.cardType || "")) continue;
       const img = c.images && (c.images.large || c.images.small);
       if (!img) continue;
-      add({ id: String((c.tcgplayer && c.tcgplayer.id) || c.id), name: c.name, game: "riftbound", img, native: c.rarity, tier: mapRarity("riftbound", c.rarity), set: (c.set && c.set.name) || f.replace(".json", "") });
+      add({ id: String((c.tcgplayer && c.tcgplayer.id) || c.id), name: c.name, game: "riftbound", img, native: c.rarity, tier: mapRarity("riftbound", c.rarity), set: (c.set && c.set.name) || f.replace(".json", ""), ...(/unit/i.test(c.cardType || "") && { chr: 1 }) });
     }
   }
   console.log("riftbound done:", count("riftbound"));
@@ -359,7 +360,7 @@ async function seedDigimon() {
     for (const c of cards) {
       const img = c.images && (c.images.large || c.images.small);
       if (!img) continue;
-      add({ id: c.code || c.id, name: c.name, game: "digimon", img, native: c.level && c.level !== "-" ? c.level : (c.cardType || "—"), tier: digimonTier(c), set: (c.set && c.set.name) || (c.code || "").split("-")[0] });
+      add({ id: c.code || c.id, name: c.name, game: "digimon", img, native: c.level && c.level !== "-" ? c.level : (c.cardType || "—"), tier: digimonTier(c), set: (c.set && c.set.name) || (c.code || "").split("-")[0], ...(c.cardType === "Digimon" && { chr: 1 }) });
     }
   }
   console.log("digimon done:", count("digimon"));
@@ -380,7 +381,7 @@ async function seedNetrunner() {
         : c.type_code === "agenda" ? "epic"
         : c.uniqueness ? "rare"
         : (c.faction_cost || 0) >= 4 ? "uncommon" : "common";
-      add({ id: c.code, name: c.title, game: "netrunner", img: `https://static.nrdbassets.com/v1/large/${c.code}.jpg`, native: c.type_code || "card", tier, set: packName[c.pack_code] || c.pack_code || "—" });
+      add({ id: c.code, name: c.title, game: "netrunner", img: `https://static.nrdbassets.com/v1/large/${c.code}.jpg`, native: c.type_code || "card", tier, set: packName[c.pack_code] || c.pack_code || "—", ...((c.type_code === "ice" || c.type_code === "program") && { chr: 1 }) });
     }
   }
   console.log("netrunner done:", count("netrunner"));
@@ -396,7 +397,7 @@ async function seedWeiss() {
     try { j = JSON.parse(readFileSync(`${dir}/${f}`, "utf8")); } catch (e) { continue; }
     for (const c of (Array.isArray(j) ? j : Object.values(j))) {
       if (!c.code || !c.name || !c.image) continue;
-      add({ id: c.code, name: c.name, game: "weiss", img: c.image, native: c.rarity || "C", tier: mapRarity("weiss", c.rarity), set: c.expansion || "—" });
+      add({ id: c.code, name: c.name, game: "weiss", img: c.image, native: c.rarity || "C", tier: mapRarity("weiss", c.rarity), set: c.expansion || "—", ...(c.type === "Character" && { chr: 1 }) });
     }
   }
   console.log("weiss done:", count("weiss"));
@@ -439,7 +440,7 @@ async function seedSWU() {
       const j = await jfetch(`https://api.swu-db.com/cards/${set}?format=json`);
       for (const c of j.data || []) {
         if (!c.FrontArt) continue;
-        add({ id: `${c.Set}-${c.Number}`, name: c.Name + (c.Subtitle ? " — " + c.Subtitle : ""), game: "swu", img: c.FrontArt, native: c.Rarity || "Common", tier: mapRarity("swu", c.Rarity), set: c.Set });
+        add({ id: `${c.Set}-${c.Number}`, name: c.Name + (c.Subtitle ? " — " + c.Subtitle : ""), game: "swu", img: c.FrontArt, native: c.Rarity || "Common", tier: mapRarity("swu", c.Rarity), set: c.Set, ...((c.Type === "Unit" || c.Type === "Leader") && { chr: 1 }) });
       }
     } catch (e) { console.log("swu set", set, "skipped:", e.message); }
     await sleep(300);
@@ -468,10 +469,10 @@ async function seedFAB() {
 }
 
 for (const [name, fn] of [["mtg", seedMTG], ["pokemon", seedPokemon], ["ygo", seedYGO], ["lorcana", seedLorcana],
-  ["onepiece", () => seedApitcgRepo("one-piece-tcg-data", "onepiece")],
-  ["gundam", () => seedApitcgRepo("gundam-tcg-data", "gundam")],
-  ["dbfusion", () => seedApitcgRepo("dragon-ball-fusion-tcg-data", "dbfusion")],
-  ["unionarena", () => seedApitcgRepo("union-arena-tcg-data", "unionarena")],
+  ["onepiece", () => seedApitcgRepo("one-piece-tcg-data", "onepiece", (c) => c.type === "CHARACTER" || c.type === "LEADER")],
+  ["gundam", () => seedApitcgRepo("gundam-tcg-data", "gundam", (c) => c.cardType === "UNIT")],
+  ["dbfusion", () => seedApitcgRepo("dragon-ball-fusion-tcg-data", "dbfusion", (c) => c.cardType === "BATTLE" || c.cardType === "LEADER")],
+  ["unionarena", () => seedApitcgRepo("union-arena-tcg-data", "unionarena", (c) => c.type === "Character")],
   ["swu", seedSWU],
   ["fab", seedFAB],
   ["riftbound", seedRiftbound],
@@ -482,11 +483,12 @@ for (const [name, fn] of [["mtg", seedMTG], ["pokemon", seedPokemon], ["ygo", se
   if (globalThis.gc) globalThis.gc();
 }
 
-// ---------- universal playability: every card fights ----------
-// Cards with no battle data get stats derived from their rarity tier — the
-// shared power ladder — spread across the tier's band by a stable per-card
-// hash so no two play identically. (Same formula as the OMNIRULES engine
-// expects; see lib/duel.js.)
+// ---------- universal playability: every CHARACTER fights ----------
+// Creature/character cards (chr flag, from each game's real card-type data)
+// with no battle stats get them derived from their rarity tier — the shared
+// power ladder — spread across the tier's band by a stable per-card hash so
+// no two play identically. Non-character cards (events, items, sites, …)
+// stay collection-only. (Same formula as lib/duel.js expects.)
 const BAND = { common: [30, 56], uncommon: [46, 71], rare: [62, 91], epic: [86, 116], legendary: [106, 141] };
 function fnv(str) {
   let h = 0x811c9dc5;
@@ -495,6 +497,9 @@ function fnv(str) {
 }
 let derived = 0;
 for (const c of out) {
+  const chr = c.chr;
+  delete c.chr;
+  if (!chr) continue; // only creatures/characters fight — the rest spectate
   if (Array.isArray(c.bs) || Array.isArray(c.fx)) continue;
   const [lo, hi] = BAND[c.tier] || BAND.common;
   const h = fnv(`${c.game}:${c.id}`);

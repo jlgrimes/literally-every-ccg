@@ -1,5 +1,6 @@
 "use client";
 import { useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { costOf, isEvolution, isSpell, pkmAtks, FX_LABEL, DECK_SIZE } from "../lib/duel";
 
 const COST_GLYPH = { mana: "💧", energy: "⚡", tribute: "⭐", trainer: "🎒", spell: "✨" };
@@ -220,7 +221,9 @@ export default function DeckBuilder({ pool, initial, deckName, onSave, onClose }
         </div>
       )}
 
-      {sheet && <SheetView c={byKey.get(key(sheet)) || sheet} />}
+      {/* portal: the builder sits under the tab bar (its own stacking context),
+          but the card sheet is a modal — it must cover the tabs too */}
+      {sheet && createPortal(<SheetView c={byKey.get(key(sheet)) || sheet} />, document.body)}
     </div>
   );
 }

@@ -742,8 +742,8 @@ export default function Home() {
               <div className="ps-title display">Choose your fighters</div>
               <div className="arena-sub">
                 {fighterPool.length
-                  ? <>Pick 3 — every game fights on one shared ATK/HP scale: real printed stats where the game has them, rarity-derived power everywhere else.</>
-                  : <>No fighters in your binder yet. Rip a pack — every card can battle.</>}
+                  ? <>Pick 3 — every game's creatures &amp; characters fight on one shared ATK/HP scale: real printed stats where the game has them, rarity-derived power everywhere else.</>
+                  : <>No fighters in your binder yet. Rip a pack — creatures and characters from any game can battle.</>}
               </div>
               {fighterPool.length > 0 && (
                 <div className="arena-grid">
