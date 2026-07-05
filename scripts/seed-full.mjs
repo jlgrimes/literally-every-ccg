@@ -125,6 +125,63 @@ function mapRarity(game, raw) {
   return "common";
 }
 
+// battle stats: normalize each game's native combat numbers onto one shared
+// ATK/HP scale (bs: [atk, hp]). Cards without bs sit out of the arena.
+// every scale is a POWER OF TEN — the in-game stat is the printed number
+// with the decimal point moved (MTG 3/3 -> 30/30, YGO 3000 ATK -> 30,
+// Pokemon 120 damage -> 12), so what you see is what the card says
+const clampStat = v => Math.max(1, Math.min(100, Math.round(v)));
+function mapStats(game, s) {
+  if (game === "mtg") {
+    if (!Number.isFinite(s.pow) || !Number.isFinite(s.tou)) return null;
+    return [clampStat(s.pow * 10), clampStat(s.tou * 10)];
+  }
+  if (game === "pokemon") {
+    if (!(s.hp > 0) || !(s.dmg > 0)) return null;
+    return [clampStat(s.dmg / 10), clampStat(s.hp / 10)];
+  }
+  if (game === "yugioh") {
+    if (!(s.atk >= 0) || !(s.def >= 0)) return null;
+    return [clampStat(s.atk / 100), clampStat(s.def / 100)];
+  }
+  return null;
+}
+
+// spell/trainer effects: classify rules text into a tiny shared effect
+// vocabulary, fx: [kind, n] on the same 1-100 scale as battle stats.
+// Kinds: dmg, kill, nuke, draw, buff, weak, heal, tutor (search deck for any
+// card), tutorc (search deck for a creature/monster/Pokémon).
+const clampN = (v, lo, hi) => Math.max(lo, Math.min(hi, Math.round(v)));
+const WORD_N = { a: 1, an: 1, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7 };
+const wnum = w => WORD_N[w] || parseInt(w, 10) || 0;
+const FX_SCALE = { mtg: 10, pokemon: 1 / 10, yugioh: 1 / 100 };
+function mapFx(game, text, opts = {}) {
+  const t = (text || "").toLowerCase().replace(/\s+/g, " ");
+  const s = FX_SCALE[game];
+  let m;
+  if (/search your (deck|library)/.test(t) || /add (?:1|one) [^.]{0,60}from your deck to your hand/.test(t)) {
+    return [/(pokémon|pokemon|monster|creature)/.test(t) ? "tutorc" : "tutor", 1];
+  }
+  if (/special summon[^.]{0,40}(gy|graveyard)/.test(t) || /(gy|graveyard)[^.]{0,40}special summon/.test(t)) return ["tutorc", 1];
+  if (/destroy all (monsters|creatures)/.test(t)) return ["nuke", 99];
+  if ((m = t.match(/(\d+) damage to (all|each)/))) return ["nuke", clampN(+m[1] * s, 8, 60)];
+  if (/destroy (target|1|one|up to one) [^.]{0,30}(creature|monster)/.test(t)) return ["kill", 0];
+  if ((m = t.match(/deals? (\d+) damage/)) || (m = t.match(/inflict (\d+) damage/))) return ["dmg", clampN(+m[1] * s, 6, 60)];
+  if ((m = t.match(/draws? (\d+|a|an|one|two|three|four|five|six|seven) cards?/))) return ["draw", clampN(wnum(m[1]), 1, 3)];
+  if ((m = t.match(/\+(\d+)\/\+(\d+)/))) return ["buff", clampN(Math.max(+m[1], +m[2]) * 10, 5, 30)];
+  if ((m = t.match(/gains? (\d+) atk/))) return ["buff", clampN(+m[1] / 100, 5, 30)];
+  if ((m = t.match(/-(\d+)\/-(\d+)/))) return ["weak", clampN(Math.max(+m[1], +m[2]) * 10, 5, 30)];
+  if ((m = t.match(/loses? (\d+) atk/))) return ["weak", clampN(+m[1] / 100, 5, 30)];
+  if ((m = t.match(/gain(?:s)? (\d+) life/))) return ["heal", clampN(+m[1], 3, 12)];
+  if ((m = t.match(/remove (?:up to )?(\d+) damage counters/))) return ["heal", clampN(+m[1] * 3, 3, 12)];
+  if ((m = t.match(/heal (\d+) damage/))) return ["heal", clampN(+m[1] / 10, 3, 12)];
+  if (game === "mtg") return ["dmg", clampN((opts.cmc || 2) * 8, 8, 40)];
+  if (game === "pokemon") return ["draw", 1];
+  if (opts.equip) return ["buff", 22];
+  if (opts.trap) return ["weak", 11];
+  return ["dmg", 18];
+}
+
 const out = [];
 const seen = new Set();
 function add(c) {
@@ -149,7 +206,14 @@ async function seedMTG() {
     if (c.set_type === "memorabilia" || c.set_type === "token") continue;
     const iu = c.image_uris || (c.card_faces && c.card_faces[0].image_uris);
     if (!iu || !iu.normal) continue;
-    add({ id: c.oracle_id || c.id, name: c.name, game: "mtg", img: iu.normal, native: c.rarity, tier: mapRarity("mtg", c.rarity), set: c.set_name });
+    const face = (c.card_faces && c.card_faces[0]) || c;
+    const num = v => (/^\d+$/.test(v || "") ? +v : NaN);
+    const bs = mapStats("mtg", { pow: num(c.power ?? face.power), tou: num(c.toughness ?? face.toughness) });
+    const typeLine = c.type_line || face.type_line || "";
+    const isSpell = !bs && /\b(Instant|Sorcery)\b/.test(typeLine);
+    const fx = isSpell ? mapFx("mtg", c.oracle_text || face.oracle_text || "", { cmc: Math.round(c.cmc || 0) }) : null;
+    // mc: real converted mana cost, used by the duel instead of derived cost
+    add({ id: c.oracle_id || c.id, name: c.name, game: "mtg", img: iu.normal, native: c.rarity, tier: mapRarity("mtg", c.rarity), set: c.set_name, ...(bs && { bs, mc: Math.round(c.cmc || 0) }), ...(fx && { fx, mc: Math.round(c.cmc || 0) }) });
   }
   console.log("MTG done:", count("mtg"));
 }
@@ -168,7 +232,20 @@ async function seedPokemon() {
     const cards = JSON.parse(readFileSync(`${dir}/${f}`, "utf8"));
     for (const c of cards) {
       if (!c.images || !c.images.large) continue;
-      add({ id: c.id, name: c.name, game: "pokemon", img: c.images.large, native: c.rarity || "Common", tier: mapRarity("pokemon", c.rarity), set: setName[setId] || setId });
+      let dmg = 0;
+      const atks = [];
+      for (const a of c.attacks || []) {
+        const d = parseInt(a.damage, 10);
+        if (d > dmg) dmg = d;
+        // atks: the REAL attack list [name, dmg on the shared scale, energy cost];
+        // in the duel, attached energy unlocks these tier by tier
+        if (d > 0) atks.push([a.name, clampStat(d / 2.4), Math.min((a.cost || []).length, 4)]);
+      }
+      atks.sort((x, y) => x[2] - y[2] || y[1] - x[1]);
+      const bs = c.supertype === "Pokémon" ? mapStats("pokemon", { hp: parseInt(c.hp, 10), dmg }) : null;
+      const fx = c.supertype === "Trainer" ? mapFx("pokemon", (c.rules || []).join(" ")) : null;
+      // evo: name of the pre-evolution — the duel only lets these be played on top of it
+      add({ id: c.id, name: c.name, game: "pokemon", img: c.images.large, native: c.rarity || "Common", tier: mapRarity("pokemon", c.rarity), set: setName[setId] || setId, ...(bs && { bs }), ...(bs && atks.length && { atks: atks.slice(0, 3) }), ...(bs && c.evolvesFrom && { evo: c.evolvesFrom }), ...(fx && { fx }) });
     }
   }
   console.log("Pokémon done:", count("pokemon"));
@@ -187,7 +264,13 @@ async function seedYGO() {
       if (!img) continue;
       const printing = c.card_sets && c.card_sets.length ? c.card_sets[Math.floor(Math.random() * c.card_sets.length)] : null;
       const native = printing ? printing.set_rarity : "Common";
-      add({ id: String(c.id), name: c.name, game: "yugioh", img, native, tier: mapRarity("yugioh", native), set: printing ? printing.set_name : "—" });
+      // link monsters have no DEF — treat as 0 so they fight as glass cannons
+      const def = typeof c.def === "number" ? c.def : (typeof c.linkval === "number" ? 0 : NaN);
+      const bs = /monster/i.test(c.type || "") ? mapStats("yugioh", { atk: c.atk, def }) : null;
+      const fx = /spell|trap/i.test(c.type || "")
+        ? mapFx("yugioh", c.desc || "", { trap: /trap/i.test(c.type), equip: /equip/i.test(c.race || "") })
+        : null;
+      add({ id: String(c.id), name: c.name, game: "yugioh", img, native, tier: mapRarity("yugioh", native), set: printing ? printing.set_name : "—", ...(bs && { bs }), ...(fx && { fx }) });
     }
     offset += batch.length;
     console.log(`Yu-Gi-Oh: ${offset}`);
@@ -208,7 +291,10 @@ async function seedLorcana() {
       for (const c of cards) {
         if (!c.image_uris || !c.image_uris.digital) continue;
         const native = (c.rarity || "Common").replace(/_/g, " ");
-        add({ id: c.id, name: c.name + (c.version ? " — " + c.version : ""), game: "lorcana", img: c.image_uris.digital.normal || c.image_uris.digital.large, native, tier: mapRarity("lorcana", c.rarity || ""), set: s.name });
+        const chr = [].concat(c.type || []).some((t) => /character/i.test(t));
+        const bs = chr && Number.isFinite(c.strength) && Number.isFinite(c.willpower)
+          ? [clampStat(c.strength * 10 || 1), clampStat(c.willpower * 10)] : null;
+        add({ id: c.id, name: c.name + (c.version ? " — " + c.version : ""), game: "lorcana", img: c.image_uris.digital.normal || c.image_uris.digital.large, native, tier: mapRarity("lorcana", c.rarity || ""), set: s.name, ...(chr && { chr: 1 }), ...(bs && { bs }) });
       }
       await sleep(150);
     } catch (e) { console.log("lorcana set failed:", s.code, e.message); }
@@ -218,7 +304,7 @@ async function seedLorcana() {
 
 
 // ---------- apitcg GitHub data repos (One Piece / Gundam / DB Fusion / Union Arena) ----------
-async function seedApitcgRepo(repo, game) {
+async function seedApitcgRepo(repo, game, isChar = () => false, statsOf = () => null) {
   console.log(game + ": downloading apitcg dump…");
   execSync(`curl -sL https://github.com/apitcg/${repo}/archive/refs/heads/main.tar.gz -o /tmp/${repo}.tgz && rm -rf /tmp/${repo} && mkdir -p /tmp/${repo} && tar xzf /tmp/${repo}.tgz -C /tmp/${repo} --strip-components=1`);
   const dir = `/tmp/${repo}/cards/en`;
@@ -229,7 +315,8 @@ async function seedApitcgRepo(repo, game) {
     for (const c of cards) {
       const img = c.images && (c.images.large || c.images.small);
       if (!img) continue;
-      add({ id: c.code || c.id, name: c.name, game, img, native: c.rarity || "C", tier: mapRarity(game, c.rarity), set: (c.set && c.set.name) || (c.code || "").split("-")[0] });
+      const bs = isChar(c) ? statsOf(c) : null;
+      add({ id: c.code || c.id, name: c.name, game, img, native: c.rarity || "C", tier: mapRarity(game, c.rarity), set: (c.set && c.set.name) || (c.code || "").split("-")[0], ...(isChar(c) && { chr: 1 }), ...(bs && { bs }) });
     }
   }
   console.log(game + " done:", count(game));
@@ -251,7 +338,9 @@ async function seedRiftbound() {
       if (!c.rarity || /token/i.test(c.cardType || "")) continue;
       const img = c.images && (c.images.large || c.images.small);
       if (!img) continue;
-      add({ id: String((c.tcgplayer && c.tcgplayer.id) || c.id), name: c.name, game: "riftbound", img, native: c.rarity, tier: mapRarity("riftbound", c.rarity), set: (c.set && c.set.name) || f.replace(".json", "") });
+      const m = parseInt(c.might, 10);
+      const bs = /unit/i.test(c.cardType || "") && m > 0 ? [clampStat(m * 10), clampStat(m * 10)] : null;
+      add({ id: String((c.tcgplayer && c.tcgplayer.id) || c.id), name: c.name, game: "riftbound", img, native: c.rarity, tier: mapRarity("riftbound", c.rarity), set: (c.set && c.set.name) || f.replace(".json", ""), ...(/unit/i.test(c.cardType || "") && { chr: 1 }), ...(bs && { bs }) });
     }
   }
   console.log("riftbound done:", count("riftbound"));
@@ -277,7 +366,9 @@ async function seedDigimon() {
     for (const c of cards) {
       const img = c.images && (c.images.large || c.images.small);
       if (!img) continue;
-      add({ id: c.code || c.id, name: c.name, game: "digimon", img, native: c.level && c.level !== "-" ? c.level : (c.cardType || "—"), tier: digimonTier(c), set: (c.set && c.set.name) || (c.code || "").split("-")[0] });
+      const dp = parseInt(String(c.dp).replace(/\D/g, ""), 10);
+      const bs = c.cardType === "Digimon" && dp > 0 ? [clampStat(dp / 100), clampStat(dp / 100)] : null;
+      add({ id: c.code || c.id, name: c.name, game: "digimon", img, native: c.level && c.level !== "-" ? c.level : (c.cardType || "—"), tier: digimonTier(c), set: (c.set && c.set.name) || (c.code || "").split("-")[0], ...(c.cardType === "Digimon" && { chr: 1 }), ...(bs && { bs }) });
     }
   }
   console.log("digimon done:", count("digimon"));
@@ -298,7 +389,9 @@ async function seedNetrunner() {
         : c.type_code === "agenda" ? "epic"
         : c.uniqueness ? "rare"
         : (c.faction_cost || 0) >= 4 ? "uncommon" : "common";
-      add({ id: c.code, name: c.title, game: "netrunner", img: `https://static.nrdbassets.com/v1/large/${c.code}.jpg`, native: c.type_code || "card", tier, set: packName[c.pack_code] || c.pack_code || "—" });
+      const bs = (c.type_code === "ice" || c.type_code === "program") && Number.isFinite(c.strength)
+        ? [clampStat(c.strength * 10 || 1), clampStat(c.strength * 10 || 1)] : null;
+      add({ id: c.code, name: c.title, game: "netrunner", img: `https://static.nrdbassets.com/v1/large/${c.code}.jpg`, native: c.type_code || "card", tier, set: packName[c.pack_code] || c.pack_code || "—", ...((c.type_code === "ice" || c.type_code === "program") && { chr: 1 }), ...(bs && { bs }) });
     }
   }
   console.log("netrunner done:", count("netrunner"));
@@ -314,7 +407,9 @@ async function seedWeiss() {
     try { j = JSON.parse(readFileSync(`${dir}/${f}`, "utf8")); } catch (e) { continue; }
     for (const c of (Array.isArray(j) ? j : Object.values(j))) {
       if (!c.code || !c.name || !c.image) continue;
-      add({ id: c.code, name: c.name, game: "weiss", img: c.image, native: c.rarity || "C", tier: mapRarity("weiss", c.rarity), set: c.expansion || "—" });
+      const wp = parseInt(c.power, 10);
+      const bs = c.type === "Character" && wp > 0 ? [clampStat(wp / 100), clampStat(wp / 100)] : null;
+      add({ id: c.code, name: c.name, game: "weiss", img: c.image, native: c.rarity || "C", tier: mapRarity("weiss", c.rarity), set: c.expansion || "—", ...(c.type === "Character" && { chr: 1 }), ...(bs && { bs }) });
     }
   }
   console.log("weiss done:", count("weiss"));
@@ -357,7 +452,10 @@ async function seedSWU() {
       const j = await jfetch(`https://api.swu-db.com/cards/${set}?format=json`);
       for (const c of j.data || []) {
         if (!c.FrontArt) continue;
-        add({ id: `${c.Set}-${c.Number}`, name: c.Name + (c.Subtitle ? " — " + c.Subtitle : ""), game: "swu", img: c.FrontArt, native: c.Rarity || "Common", tier: mapRarity("swu", c.Rarity), set: c.Set });
+        const chr = c.Type === "Unit" || c.Type === "Leader";
+        const sp = parseInt(c.Power, 10), sh = parseInt(c.HP, 10);
+        const bs = chr && Number.isFinite(sp) && Number.isFinite(sh) ? [clampStat(sp * 10 || 1), clampStat(sh * 10 || 1)] : null;
+        add({ id: `${c.Set}-${c.Number}`, name: c.Name + (c.Subtitle ? " — " + c.Subtitle : ""), game: "swu", img: c.FrontArt, native: c.Rarity || "Common", tier: mapRarity("swu", c.Rarity), set: c.Set, ...(chr && { chr: 1 }), ...(bs && { bs }) });
       }
     } catch (e) { console.log("swu set", set, "skipped:", e.message); }
     await sleep(300);
@@ -372,18 +470,28 @@ async function seedFAB() {
   for (const c of all) {
     const printing = (c.printings || []).find(p => p.image_url);
     if (!printing) continue;
-    const rar = (c.rarities || [])[0] || "C";
-    if (rar === "T") continue; // tokens
-    add({ id: c.unique_id, name: c.name, game: "fab", img: printing.image_url, native: rar, tier: mapRarity("fab", rar), set: printing.set_id || "—" });
+    const rar = printing.rarity || "C"; // rarity lives on the printing
+    if (rar === "T" || rar === "B") continue; // tokens / basics
+    const pow = parseInt(c.power, 10), def = parseInt(c.defense, 10);
+    // real combat stats where printed: power scales like MTG P/T, block
+    // value (defense) anchors the health side
+    const bs = Number.isFinite(pow)
+      ? [clampStat(pow * 10 || 1), clampStat(Number.isFinite(def) ? def * 10 || 1 : 20)]
+      : null;
+    add({ id: c.unique_id, name: c.name, game: "fab", img: printing.image_url, native: rar, tier: mapRarity("fab", rar), set: printing.set_id || "—", ...(bs && { bs }) });
   }
   console.log("fab done:", count("fab"));
 }
 
 for (const [name, fn] of [["mtg", seedMTG], ["pokemon", seedPokemon], ["ygo", seedYGO], ["lorcana", seedLorcana],
-  ["onepiece", () => seedApitcgRepo("one-piece-tcg-data", "onepiece")],
-  ["gundam", () => seedApitcgRepo("gundam-tcg-data", "gundam")],
-  ["dbfusion", () => seedApitcgRepo("dragon-ball-fusion-tcg-data", "dbfusion")],
-  ["unionarena", () => seedApitcgRepo("union-arena-tcg-data", "unionarena")],
+  ["onepiece", () => seedApitcgRepo("one-piece-tcg-data", "onepiece", (c) => c.type === "CHARACTER" || c.type === "LEADER",
+    (c) => { const p = parseInt(c.power, 10); return p > 0 ? [clampStat(p / 100), clampStat(p / 100)] : null; })],
+  ["gundam", () => seedApitcgRepo("gundam-tcg-data", "gundam", (c) => c.cardType === "UNIT",
+    (c) => { const a = parseInt(c.ap, 10), h = parseInt(c.hp, 10); return Number.isFinite(a) && Number.isFinite(h) ? [clampStat(a * 10 || 1), clampStat(h * 10 || 1)] : null; })],
+  ["dbfusion", () => seedApitcgRepo("dragon-ball-fusion-tcg-data", "dbfusion", (c) => c.cardType === "BATTLE" || c.cardType === "LEADER",
+    (c) => { const p = parseInt(c.power, 10); return p >= 1000 ? [clampStat(p / 1000), clampStat(p / 1000)] : null; })],
+  ["unionarena", () => seedApitcgRepo("union-arena-tcg-data", "unionarena", (c) => c.type === "Character",
+    (c) => { const b = parseInt(c.bp, 10); return b > 0 ? [clampStat(b / 100), clampStat(b / 100)] : null; })],
   ["swu", seedSWU],
   ["fab", seedFAB],
   ["riftbound", seedRiftbound],
@@ -393,6 +501,33 @@ for (const [name, fn] of [["mtg", seedMTG], ["pokemon", seedPokemon], ["ygo", se
   try { await fn(); } catch (e) { console.log("seeder", name, "FAILED:", e.message); }
   if (globalThis.gc) globalThis.gc();
 }
+
+// ---------- universal playability: every CHARACTER fights ----------
+// Creature/character cards (chr flag, from each game's real card-type data)
+// with no battle stats get them derived from their rarity tier — the shared
+// power ladder — spread across the tier's band by a stable per-card hash so
+// no two play identically. Non-character cards (events, items, sites, …)
+// stay collection-only. (Same formula as lib/duel.js expects.)
+const BAND = { common: [16, 30], uncommon: [24, 40], rare: [32, 50], epic: [45, 70], legendary: [55, 85] };
+function fnv(str) {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
+  return h;
+}
+let derived = 0;
+for (const c of out) {
+  const chr = c.chr;
+  delete c.chr;
+  if (!chr) continue; // only creatures/characters fight — the rest spectate
+  if (Array.isArray(c.bs) || Array.isArray(c.fx)) continue;
+  const [lo, hi] = BAND[c.tier] || BAND.common;
+  const h = fnv(`${c.game}:${c.id}`);
+  const sum = lo + (h % (hi - lo + 1));
+  const atk = Math.max(1, Math.min(99, Math.round(sum * (0.35 + ((h >>> 8) % 31) / 100))));
+  c.bs = [atk, Math.max(1, Math.min(99, sum - atk))];
+  derived++;
+}
+console.log("universal playability: derived stats for", derived, "cards");
 
 mkdirSync("data", { recursive: true });
 writeFileSync("data/cards.json", JSON.stringify(out));

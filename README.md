@@ -16,6 +16,36 @@ levels (a Lv.7 mega is a legendary, an egg is a common).
 ## Features
 
 - Swipe-to-tear pack opening with a tap-through card stack
+- OMNIRULES duels — creatures and characters from all 14 games battle
+  under one merged rulebook: Magic cards cost their real printed mana and
+  suffer summoning sickness, Pokémon attack only with energy attached and
+  evolve on top of their pre-evolutions, Yu-Gi-Oh monsters tribute-summon
+  by sacrificing your board (yes, you can sacrifice a Grizzly Bears to
+  summon Blue-Eyes White Dragon) — and the other eleven games' characters
+  all play on the universal mana system. Every stat is the card's PRINTED
+  number, normalized only by powers of ten: a Magic 3/3 is a 30/30,
+  Blue-Eyes' 3000 ATK reads 30, a 4000-power One Piece Franky reads 40,
+  a 7000 DP Digimon reads 70. Each game converts stats to mana at its own
+  exchange rate (big printed numbers cost proportionally more), tuned by
+  AI-vs-AI simulation until no game dominates; Pokémon attacks exploit
+  weakness for double damage against rival creatures.
+  Character types come from each game's real card-type data (Lorcana
+  characters, SWU units and leaders, Digimon, Netrunner ICE and programs,
+  Weiß characters, …) — events, items and sites stay collection-only
+- Magic-style combat: attackers swing at the player, and the defender
+  assigns blockers — chump-block with a Kuriboh, wall with a Snorlax, or
+  take it to the face; empty decks bleed fatigue
+- Decks are creatures only — spells, trainers, traps, events, items and
+  sites are collection pieces, not deck cards (the engine still carries a
+  classified effect vocabulary for ~15,000 of them, parked for a future
+  mode)
+- Deck building, required: save up to 12 named decks built from cards you
+  actually pulled (duplicates up to the copies you own) and switch the
+  active one any time
+- Multiplayer: create a match, send the 6-letter code to a friend, and duel
+  each other's real decks under the merged rules — turn-based with live sync
+- Quick skirmishes: 3-lane stat fights with real P/T, HP/attack and ATK/DEF
+  normalized onto one 1–100 scale, against a tier-matched AI
 - Unified 6/3/1 booster structure (hit slot: Legendary 8% / Epic 20% / Rare 72%)
 - God packs: 1 in 200 packs arrives in a golden wrapper — all ten cards are
   epics and legendaries, rolled server-side like everything else
@@ -29,14 +59,26 @@ Next.js on Vercel. The card database is built by `scripts/seed-full.mjs`,
 which ingests full catalogs from Scryfall bulk data, the official
 pokemon-tcg-data dump, YGOPRODeck, Lorcast, apitcg data repos, swu-db,
 the-fab-cube, NetrunnerDB, and the Heart-of-the-Cards Weiß Schwarz DB —
-then normalizes every game's native rarities into five shared tiers.
-Pack odds are server-authoritative via `/api/pack`.
+then normalizes every game's native rarities into five shared tiers, and
+each battle game's combat stats onto a shared 1–100 ATK/HP scale. Pack
+odds and battle resolution are server-authoritative via `/api/pack` and
+`/api/battle`.
 
 ```bash
 npm install
 npm run seed   # rebuild data/cards.json from live sources (~5 min)
 npm run dev
 ```
+
+### Multiplayer storage
+
+Matches are stored via `lib/matchStore.js`. Locally it falls back to an
+in-process map (two tabs against `npm run dev` just work). In production
+(serverless) it needs Supabase:
+
+1. Create a Supabase project and run `supabase/schema.sql` in its SQL editor.
+2. Set `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` in the deployment
+   environment. The service key is only used server-side, in API routes.
 
 ## Credits & License
 
